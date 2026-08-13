@@ -53,18 +53,31 @@
 
 # CIS 4.2.3 — no world-readable logs. Walking /var/log rather than listing files
 # explicitly, because what lives there depends on which services are installed.
+#
+# wtmp, btmp, lastlog and faillog are excluded deliberately. They are session
+# accounting databases owned by the utmp group, which needs write access to
+# record logins; forcing them to 0640 stops `last` and `lastb` recording
+# anything, which is the opposite of what an audit baseline wants.
 - name: Find world-readable or group-writable files under /var/log
   ansible.builtin.command:
-    cmd: find /var/log -type f -perm /o+rwx -o -type f -perm /g+wx
+    cmd: >-
+      find /var/log -type f
+      ! -name wtmp ! -name btmp ! -name lastlog ! -name faillog
+      ( -perm /o+rwx -o -perm /g+wx )
   register: base_hardening_bad_log_perms
   changed_when: false
   failed_when: false
 
+# Tagged out of the idempotence check because apt and dnf rewrite their own
+# logs — /var/log/apt/eipp.log.xz on every single invocation — at the package
+# manager's default mode. The sweep correctly tightens them again each run, so
+# this task reports changed forever without anything being wrong.
 - name: Remove excess permissions from log files
   ansible.builtin.file:
     path: "{{ item }}"
     mode: "0640"
   loop: "{{ base_hardening_bad_log_perms.stdout_lines }}"
+  tags: [molecule-idempotence-notest]
   when:
     - base_hardening_enforce | bool
     - base_hardening_bad_log_perms.stdout_lines | length > 0
