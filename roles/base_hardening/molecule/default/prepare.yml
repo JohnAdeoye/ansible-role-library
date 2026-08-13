@@ -35,6 +35,27 @@
         state: present
       when: ansible_os_family == 'Debian'
 
+    # The role validates its sshd_config with `sshd -t`, which refuses to run
+    # without host keys or the privilege separation directory. A real host has
+    # both from the openssh package's post-install; these images do not.
+    - name: Install the SSH server
+      ansible.builtin.package:
+        name: openssh-server
+        state: present
+
+    - name: Create the sshd privilege separation directory
+      ansible.builtin.file:
+        path: /run/sshd
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Generate the host keys that sshd -t requires
+      ansible.builtin.command: ssh-keygen -A
+      args:
+        creates: /etc/ssh/ssh_host_ed25519_key
+
     - name: Ensure the su group exists
       ansible.builtin.group:
         name: wheel

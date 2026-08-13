@@ -85,9 +85,9 @@ server {
         proxy_read_timeout {{ loc.proxy_read_timeout }};
         {% endif %}
         {% if loc.websocket | default(false) %}
-        # WebSocket upgrade. Requires the connection_upgrade map, which lives in
-        # proxy-params.conf.
-        proxy_http_version 1.1;
+        # WebSocket upgrade. proxy-params.conf, included above, already sets
+        # proxy_http_version 1.1 and defines the connection_upgrade map —
+        # repeating the directive here is a duplicate and nginx refuses to start.
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         {% endif %}
