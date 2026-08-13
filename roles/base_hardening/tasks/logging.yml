@@ -17,7 +17,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 4.2.2 — journald.
       [Journal]
       Storage=persistent

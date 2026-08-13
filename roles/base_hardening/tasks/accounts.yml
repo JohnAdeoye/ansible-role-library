@@ -38,7 +38,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 5.4.5 — idle shells are logged out.
       TMOUT={{ base_hardening_shell_timeout }}
       readonly TMOUT
@@ -51,7 +51,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 5.4.4 — default user umask.
       umask {{ base_hardening_umask }}
 

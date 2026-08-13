@@ -72,7 +72,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 5.3.3 — remember previous passwords.
       remember = {{ base_hardening_password_remember }}
   when: ansible_os_family == 'RedHat'

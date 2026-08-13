@@ -11,7 +11,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 1.1.1 — disable unused filesystem kernel modules.
       {% for fs in base_hardening_blocked_filesystems %}
       install {{ fs }} /bin/false

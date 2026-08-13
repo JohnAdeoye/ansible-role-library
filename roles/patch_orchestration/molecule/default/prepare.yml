@@ -13,9 +13,10 @@
         name: "{{ ['procps'] if ansible_os_family == 'Debian' else ['procps-ng', 'dnf-utils'] }}"
         state: present
 
-    # Downgrade something so there is a real update to apply, rather than a
-    # converge that trivially finds nothing to do.
-    - name: Install an older package version to be updated
+    # Something for the patch run to consider. `curl` cannot be installed on
+    # RHEL 9 derivatives — it conflicts with the curl-minimal the base image
+    # already carries — so each family gets the name it can actually resolve.
+    - name: Install a package the patch run can update
       ansible.builtin.package:
-        name: curl
+        name: "{{ 'curl' if ansible_os_family == 'Debian' else 'curl-minimal' }}"
         state: present

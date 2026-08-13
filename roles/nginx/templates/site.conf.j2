@@ -24,12 +24,16 @@ server {
 }
 {% endif %}
 
+{# `http2 on;` is nginx 1.25.1 and later. Before that it is a `listen`
+   parameter, and the standalone directive is a hard "unknown directive"
+   error — which is what Ubuntu 22.04 (1.18) and Rocky 9 (1.20) ship. #}
+{% set http2_on_listen = is_tls and nginx_version is version('1.25.1', '<') %}
 server {
-    listen {{ listen_port }}{% if is_tls %} ssl{% endif %};
+    listen {{ listen_port }}{% if is_tls %} ssl{% if http2_on_listen %} http2{% endif %}{% endif %};
     {% if nginx_ipv6_enabled | default(true) %}
-    listen [::]:{{ listen_port }}{% if is_tls %} ssl{% endif %};
+    listen [::]:{{ listen_port }}{% if is_tls %} ssl{% if http2_on_listen %} http2{% endif %}{% endif %};
     {% endif %}
-    {% if is_tls %}
+    {% if is_tls and not http2_on_listen %}
     http2 on;
     {% endif %}
     server_name {{ item.server_name }};

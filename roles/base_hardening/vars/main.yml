@@ -1,0 +1,6 @@
+---
+# `ansible_managed` is injected by the template module and is not a normal
+# variable, so referring to it from `copy: content:` fails with "'ansible_managed'
+# is undefined". This reads the same string from configuration, so files written
+# by `copy` carry the banner the templates already do.
+base_hardening_managed: "{{ lookup('ansible.builtin.config', 'DEFAULT_MANAGED_STR') }}"

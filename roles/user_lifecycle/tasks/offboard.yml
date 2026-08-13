@@ -31,11 +31,24 @@
 
     # 2. Expire the account outright. A locked password alone still allows
     #    key-based and PAM-delegated logins on some configurations.
+    #    `chage -E 0` exits 0 whether or not it altered anything, so reporting
+    #    changed on rc == 0 made this task change on every run. The expiry field
+    #    of the shadow entry is the actual state, so compare that; an entry that
+    #    cannot be read is treated as needing the change rather than skipped.
+    - name: "Read the current account expiry for {{ user.name }}"
+      ansible.builtin.command:
+        cmd: "getent shadow {{ user.name }}"
+      register: user_lifecycle_shadow
+      changed_when: false
+      failed_when: false
+
     - name: "Expire the account for {{ user.name }}"
       ansible.builtin.command:
         cmd: "chage -E 0 {{ user.name }}"
-      register: user_lifecycle_expire
-      changed_when: user_lifecycle_expire.rc == 0
+      changed_when: true
+      when: >-
+        user_lifecycle_shadow.stdout.split(':') | length < 8
+        or user_lifecycle_shadow.stdout.split(':')[7] != '0'
 
     # 3. No key-based logins.
     - name: "Remove SSH authorized keys for {{ user.name }}"

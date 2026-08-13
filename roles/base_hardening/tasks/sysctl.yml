@@ -54,7 +54,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 3.1.1 — IPv6 disabled by policy.
       net.ipv6.conf.all.disable_ipv6 = 1
       net.ipv6.conf.default.disable_ipv6 = 1
@@ -83,7 +83,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       # CIS 1.5.1 — core dumps disabled.
       * hard core 0
 
@@ -103,7 +103,7 @@
     group: root
     mode: "0644"
     content: |
-      # {{ ansible_managed }}
+      # {{ base_hardening_managed }}
       [Coredump]
       Storage=none
       ProcessSizeMax=0

@@ -40,6 +40,20 @@
         name: "{{ nginx_packages }}"
         state: present
 
+    # The HTTP/2 syntax changed in 1.25.1, and picking the wrong one is a fatal
+    # config error rather than a warning, so the templates branch on the version
+    # actually installed rather than assuming a recent build.
+    - name: Read the installed NGINX version
+      ansible.builtin.command: nginx -v
+      changed_when: false
+      register: nginx_version_command
+
+    - name: Record the installed NGINX version
+      ansible.builtin.set_fact:
+        nginx_version: >-
+          {{ (nginx_version_command.stderr ~ nginx_version_command.stdout)
+             | regex_search('nginx/([0-9]+\.[0-9]+\.[0-9]+)', '\1') | first }}
+
     - name: Ensure the vhost directories exist
       ansible.builtin.file:
         path: "{{ item }}"
