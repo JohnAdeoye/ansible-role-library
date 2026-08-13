@@ -42,15 +42,24 @@ ansible-playbook -i inventory/hosts.ini playbooks/harden.yml --check --diff
 ansible-playbook -i inventory/hosts.ini playbooks/harden.yml
 ```
 
-Consume a single role from another project:
+Consume the roles from another project. They ship as the `johnadeoye.homelab`
+collection — `ansible-galaxy role install` treats a git repository as a single
+role, so pulling four roles from one repository that way installs the same tree
+under each name:
 
 ```yaml
 # requirements.yml
-roles:
-  - name: base_hardening
-    src: https://github.com/OWNER/ansible-role-library.git
-    scm: git
+collections:
+  - name: https://github.com/JohnAdeoye/ansible-role-library.git
+    type: git
     version: main
+```
+
+```yaml
+- hosts: all
+  become: true
+  roles:
+    - role: johnadeoye.homelab.base_hardening
 ```
 
 ## Using the roles

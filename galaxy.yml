@@ -1,0 +1,39 @@
+---
+# Shipped as a collection rather than four standalone roles.
+#
+# `ansible-galaxy role install` treats a git repository as a single role, so
+# requesting several roles from one repository installs the same tree under each
+# name — the consumer silently gets the wrong tasks. A collection is the
+# supported way to distribute more than one role from a repository.
+namespace: johnadeoye
+name: homelab
+version: 1.0.0
+readme: README.md
+authors:
+  - John Adeoye
+description: >-
+  Reusable roles for Linux base hardening to CIS Level 1, NGINX, patch
+  orchestration and user lifecycle management on RHEL 9 and Ubuntu 22.04.
+license:
+  - MIT
+tags:
+  - linux
+  - security
+  - hardening
+  - cis
+  - nginx
+  - patching
+repository: https://github.com/JohnAdeoye/ansible-role-library
+issues: https://github.com/JohnAdeoye/ansible-role-library/issues
+dependencies:
+  ansible.posix: ">=1.5.4"
+  community.general: ">=8.0.0"
+build_ignore:
+  - .github
+  - .galaxy_roles
+  - .galaxy_collections
+  - molecule
+  - inventory
+  - requirements.txt
+  - Makefile
+  - "*.tar.gz"

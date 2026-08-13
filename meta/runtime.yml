@@ -1,0 +1,4 @@
+---
+# The floor is the oldest ansible-core still receiving support; the roles use
+# nothing newer than `ansible.builtin.blockinfile` with `append_newline`.
+requires_ansible: ">=2.15.0"
