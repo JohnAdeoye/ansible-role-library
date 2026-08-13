@@ -60,7 +60,10 @@
     line: "password required pam_pwhistory.so remember={{ base_hardening_password_remember }} use_authtok"
     insertafter: '^# here are the per-package modules'
     state: present
-    validate: "/bin/true"   # pam files have no offline validator; see verify step
+  # No `validate` here: PAM has no offline checker, and Ansible rejects a
+  # validate command without %s anyway. The verify step exercises the result
+  # instead. Getting this wrong locks every account out of the host, so the
+  # check belongs somewhere that can actually attempt an authentication.
   when:
     - ansible_os_family == 'Debian'
     - base_hardening_enforce | bool
