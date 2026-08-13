@@ -1,7 +1,9 @@
 ---
 - name: Converge
   hosts: all
-  become: true
+  # No become: the container is entered as root already, and escalating
+  # root->root still goes through sudo, whose PAM stack is not functional in
+  # these images. The roles never escalate on their own.
   tasks:
     - name: Apply the user_lifecycle role
       ansible.builtin.include_role:

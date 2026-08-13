@@ -39,6 +39,11 @@ platforms:
 
 provisioner:
   name: ansible
+  env:
+    # Scenarios live at roles/<name>/molecule/, and molecule no longer puts the
+    # library's roles/ on the search path, so a bare `include_role` name does
+    # not resolve.
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..
   config_options:
     defaults:
       callbacks_enabled: profile_tasks

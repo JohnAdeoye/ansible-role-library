@@ -1,7 +1,9 @@
 ---
 - name: Converge
   hosts: all
-  become: true
+  # No become: the container is entered as root already, and escalating
+  # root->root still goes through sudo, whose PAM stack is not functional in
+  # these images. The roles never escalate on their own.
   # In a real play this is where serial and max_fail_percentage go. They are the
   # mechanism that makes the health gate stop a rollout.
   serial: 1
