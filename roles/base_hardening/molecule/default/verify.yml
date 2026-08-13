@@ -147,17 +147,31 @@
         fail_msg: "audit rules are missing a CIS 4.1.3 requirement"
         quiet: true
 
+    # The only way to check rules.d syntax is to load it, and loading needs a
+    # real kernel audit subsystem. A container has none: auditctl exits non-zero
+    # with nothing on stderr, so a parse error and an unreachable subsystem are
+    # not distinguishable after the fact. Ask whether it is reachable first, and
+    # let the load fail honestly when it is.
+    - name: Check whether the kernel audit subsystem is reachable
+      ansible.builtin.command:
+        cmd: auditctl -s
+      register: auditctl_status
+      changed_when: false
+      failed_when: false
+
     - name: Assert the audit rules are syntactically valid
       ansible.builtin.command:
         cmd: auditctl -R /etc/audit/rules.d/99-cis.rules
       register: auditctl_check
       changed_when: false
-      # Loading rules needs a real kernel audit subsystem, which a container does
-      # not have. A parse error and a permission error are distinguishable by message.
-      failed_when:
-        - auditctl_check.rc != 0
-        - "'Operation not permitted' not in auditctl_check.stderr"
-        - "'Error sending' not in auditctl_check.stderr"
+      when: auditctl_status.rc == 0
+
+    - name: Report that rule syntax could not be checked here
+      ansible.builtin.debug:
+        msg: >-
+          Skipped loading the audit rules: no kernel audit subsystem in this
+          container. The rule content is asserted above.
+      when: auditctl_status.rc != 0
 
     # ---------------------------------------------------------------- banner (1.7)
     - name: Read /etc/issue.net
