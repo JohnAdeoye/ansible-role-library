@@ -15,13 +15,22 @@
   loop_control:
     label: "{{ item.key }} = {{ item.value }}"
 
+# `useradd -D -f` rewrites /etc/default/useradd and exits 0 either way, so the
+# current value is the only thing that says whether there is work to do.
+- name: Read the current useradd defaults
+  ansible.builtin.command:
+    cmd: useradd -D
+  register: base_hardening_useradd_defaults
+  changed_when: false
+
 - name: Set the default inactive-account lock period
   ansible.builtin.command:
     cmd: "useradd -D -f {{ base_hardening_inactive_lock_days }}"
-  register: base_hardening_useradd_default
-  changed_when: base_hardening_useradd_default.rc == 0
-  # useradd -D writes /etc/default/useradd unconditionally, so guard on current value.
-  when: base_hardening_enforce | bool
+  changed_when: true
+  when:
+    - base_hardening_enforce | bool
+    - ('INACTIVE=' ~ base_hardening_inactive_lock_days) not in
+      base_hardening_useradd_defaults.stdout_lines
 
 - name: Apply the ageing policy to existing interactive users
   ansible.builtin.user:

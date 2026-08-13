@@ -44,6 +44,13 @@
   notify: Restart rsyslog
   when: base_hardening_rsyslog_conf.stat.exists
 
+# Restart the log daemons before auditing permissions, not after. Handlers
+# normally run at the end of the play, so rsyslog would still be creating files
+# under the old FileCreateMode while the sweep below ran — the next run would
+# then find those files and "fix" them again, and the role would never settle.
+- name: Apply pending log daemon restarts before auditing permissions
+  ansible.builtin.meta: flush_handlers
+
 # CIS 4.2.3 — no world-readable logs. Walking /var/log rather than listing files
 # explicitly, because what lives there depends on which services are installed.
 - name: Find world-readable or group-writable files under /var/log
