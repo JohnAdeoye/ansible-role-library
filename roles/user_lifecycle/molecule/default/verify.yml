@@ -1,0 +1,156 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    # ------------------------------------------------------------- provisioning
+    - name: Read the password database
+      ansible.builtin.getent:
+        database: passwd
+
+    - name: Assert the provisioned accounts exist with the right UIDs
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd['alice'][1] == '4001'
+          - ansible_facts.getent_passwd['bob'][1] == '4002'
+          - ansible_facts.getent_passwd['carol'][1] == '4003'
+        quiet: true
+
+    - name: Read group membership
+      ansible.builtin.command:
+        cmd: id -nG alice
+      register: alice_groups
+      changed_when: false
+
+    - name: Assert alice is in both secondary groups
+      ansible.builtin.assert:
+        that:
+          - "'developers' in alice_groups.stdout"
+          - "'oncall' in alice_groups.stdout"
+        quiet: true
+
+    - name: Read alice's authorized_keys
+      ansible.builtin.slurp:
+        src: /home/alice/.ssh/authorized_keys
+      register: alice_keys
+
+    - name: Assert both of alice's keys are installed
+      ansible.builtin.assert:
+        that:
+          - "'alice@laptop' in (alice_keys.content | b64decode)"
+          - "'alice@desktop' in (alice_keys.content | b64decode)"
+        quiet: true
+
+    - name: Assert sudo files are valid
+      ansible.builtin.command:
+        cmd: visudo -cf /etc/sudoers.d/90-ansible-{{ item }}
+      loop: [alice, bob]
+      changed_when: false
+
+    - name: Read bob's sudoers file
+      ansible.builtin.slurp:
+        src: /etc/sudoers.d/90-ansible-bob
+      register: bob_sudo
+
+    - name: Assert bob has a restricted NOPASSWD command list
+      ansible.builtin.assert:
+        that:
+          - "'NOPASSWD:' in (bob_sudo.content | b64decode)"
+          - "'/usr/bin/journalctl' in (bob_sudo.content | b64decode)"
+          - "'ALL=(ALL:ALL) ALL' not in (bob_sudo.content | b64decode)"
+        quiet: true
+
+    - name: Assert carol has no sudoers file
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/90-ansible-carol
+      register: carol_sudo
+
+    - name: Check carol was granted nothing
+      ansible.builtin.assert:
+        that: [not carol_sudo.stat.exists]
+        quiet: true
+
+    # -------------------------------------------------------------- offboarding
+    - name: Assert the leaver's account still exists
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd['leaver'] is defined
+        fail_msg: "offboarding deleted the account; it should only disable it"
+        quiet: true
+
+    - name: Assert the leaver's shell is nologin
+      ansible.builtin.assert:
+        that:
+          - "'nologin' in ansible_facts.getent_passwd['leaver'][5]"
+        quiet: true
+
+    - name: Read the shadow entry for the leaver
+      ansible.builtin.command:
+        cmd: getent shadow leaver
+      register: leaver_shadow
+      changed_when: false
+
+    - name: Assert the leaver's password is locked and the account expired
+      ansible.builtin.assert:
+        that:
+          # A locked password hash is prefixed with '!'.
+          - leaver_shadow.stdout.split(':')[1].startswith('!')
+          # Field 8 is the expiry date in days since epoch; chage -E 0 sets it to 1.
+          - leaver_shadow.stdout.split(':')[7] in ['0', '1']
+        fail_msg: "leaver is not locked out: {{ leaver_shadow.stdout }}"
+        quiet: true
+
+    - name: Assert the leaver's SSH key was revoked
+      ansible.builtin.stat:
+        path: /home/leaver/.ssh/authorized_keys
+      register: leaver_keys
+
+    - name: Check the authorized_keys file is gone
+      ansible.builtin.assert:
+        that: [not leaver_keys.stat.exists]
+        fail_msg: "the leaver can still log in with their SSH key"
+        quiet: true
+
+    - name: Assert the leaver's sudo rights were removed
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/90-ansible-leaver
+      register: leaver_sudo
+
+    - name: Check sudo was revoked
+      ansible.builtin.assert:
+        that: [not leaver_sudo.stat.exists]
+        quiet: true
+
+    - name: Find the offboarding archive
+      ansible.builtin.find:
+        paths: /var/archive/users
+        patterns: "leaver-*.tar.gz"
+      register: leaver_archive
+
+    - name: Assert the home directory was archived
+      ansible.builtin.assert:
+        that: [leaver_archive.matched == 1]
+        fail_msg: "no offboarding archive was written for the leaver"
+        quiet: true
+
+    - name: Assert the archive contains the leaver's data
+      ansible.builtin.command:
+        cmd: "tar tzf {{ leaver_archive.files[0].path }}"
+      register: archive_contents
+      changed_when: false
+
+    - name: Check the work product survived
+      ansible.builtin.assert:
+        that: ["'important.txt' in archive_contents.stdout"]
+        quiet: true
+
+    - name: Assert the home directory was kept
+      ansible.builtin.stat:
+        path: /home/leaver/important.txt
+      register: leaver_home
+
+    - name: Check data was archived, not destroyed
+      ansible.builtin.assert:
+        that: [leaver_home.stat.exists]
+        fail_msg: "offboarding deleted data with remove_home disabled"
+        quiet: true

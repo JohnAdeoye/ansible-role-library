@@ -1,0 +1,66 @@
+---
+# Fail fast, before a half-applied user list leaves the fleet inconsistent.
+
+- name: Assert every user has a name
+  ansible.builtin.assert:
+    that: [item.name is defined, item.name | length > 0]
+    fail_msg: "every entry in user_lifecycle_users needs a name"
+    quiet: true
+  loop: "{{ user_lifecycle_users }}"
+  loop_control:
+    label: "{{ item.name | default('<unnamed>') }}"
+
+- name: Assert user states are valid
+  ansible.builtin.assert:
+    that:
+      - item.state | default('present') in ['present', 'offboarded', 'absent']
+    fail_msg: >-
+      {{ item.name }} has state '{{ item.state | default('present') }}';
+      valid states are present, offboarded, absent.
+    quiet: true
+  loop: "{{ user_lifecycle_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert no duplicate usernames
+  ansible.builtin.assert:
+    that:
+      - user_lifecycle_users | map(attribute='name') | list | length
+        == user_lifecycle_users | map(attribute='name') | list | unique | length
+    fail_msg: "user_lifecycle_users contains duplicate names"
+    quiet: true
+
+- name: Assert no duplicate UIDs
+  ansible.builtin.assert:
+    that:
+      - user_lifecycle_users | selectattr('uid', 'defined') | map(attribute='uid') | list | length
+        == user_lifecycle_users | selectattr('uid', 'defined') | map(attribute='uid') | list | unique | length
+    fail_msg: "user_lifecycle_users assigns the same uid to more than one user"
+    quiet: true
+
+# A plaintext password here would end up in /etc/shadow verbatim and lock the
+# account out in a way that is confusing to debug. Catch it at parse time.
+- name: Assert passwords are hashes, not plaintext
+  ansible.builtin.assert:
+    that:
+      # Matches the crypt prefix: $6$, $y$, $2b$ and so on.
+      - item.password is match('^\$[0-9a-z]+\$')
+    fail_msg: >-
+      {{ item.name }}: password must be a crypt hash (e.g. from
+      `mkpasswd --method=yescrypt`), not plaintext.
+    quiet: true
+  loop: "{{ user_lifecycle_users | selectattr('password', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert SSH keys look like public keys
+  ansible.builtin.assert:
+    that:
+      - item.1 is match('^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-|sk-)')
+    fail_msg: >-
+      {{ item.0.name }}: '{{ item.1 | truncate(40) }}' does not look like an SSH
+      public key. A private key pasted here would be a serious leak.
+    quiet: true
+  loop: "{{ user_lifecycle_users | subelements('ssh_keys', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }}"

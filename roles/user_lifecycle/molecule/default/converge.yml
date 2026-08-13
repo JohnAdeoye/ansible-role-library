@@ -1,0 +1,45 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Apply the user_lifecycle role
+      ansible.builtin.include_role:
+        name: user_lifecycle
+      vars:
+        user_lifecycle_groups:
+          - name: developers
+            gid: 4200
+          - name: oncall
+
+        user_lifecycle_users:
+          # Full sudo, two keys.
+          - name: alice
+            comment: "Alice Admin"
+            uid: 4001
+            groups: [developers, oncall]
+            sudo: full
+            ssh_keys:
+              - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice0key0one alice@laptop"
+              - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice0key0two alice@desktop"
+
+          # Restricted sudo command list.
+          - name: bob
+            comment: "Bob Operator"
+            uid: 4002
+            groups: [developers]
+            sudo:
+              - /usr/bin/systemctl restart nginx
+              - /usr/bin/journalctl
+            sudo_nopasswd: true
+            ssh_keys:
+              - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBob0key bob@laptop"
+
+          # No sudo, no keys.
+          - name: carol
+            uid: 4003
+            state: present
+
+          # The interesting one.
+          - name: leaver
+            state: offboarded

@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  # In a real play this is where serial and max_fail_percentage go. They are the
+  # mechanism that makes the health gate stop a rollout.
+  serial: 1
+  max_fail_percentage: 0
+  tasks:
+    - name: Apply the patch_orchestration role
+      ansible.builtin.include_role:
+        name: patch_orchestration
+      vars:
+        patch_orchestration_scope: all
+        patch_orchestration_reboot: never          # containers cannot reboot
+        patch_orchestration_min_free_mb:
+          /: 128                     # container filesystems are small
+        patch_orchestration_health_services: []
+        patch_orchestration_report_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/patch-reports"

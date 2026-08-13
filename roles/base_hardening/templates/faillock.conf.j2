@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# CIS 5.3.2 — account lockout after repeated failures (pam_faillock).
+
+# Failed attempts before the account locks.
+deny = {{ base_hardening_lockout_attempts }}
+
+# Window in which failures accumulate.
+fail_interval = 900
+
+# How long the account stays locked. 0 means it stays locked until an
+# administrator runs `faillock --reset --user <name>`.
+unlock_time = {{ base_hardening_lockout_unlock_time }}
+
+# Apply the same lockout to root. Leave this off if you have no out-of-band
+# console access — a locked root plus a locked admin account means a rescue boot.
+{% if base_hardening_lockout_include_root %}
+even_deny_root
+root_unlock_time = {{ base_hardening_lockout_root_unlock_time }}
+{% endif %}
+
+# Log every failure to the audit trail.
+audit
+silent

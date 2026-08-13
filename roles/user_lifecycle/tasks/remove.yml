@@ -1,0 +1,22 @@
+---
+# Hard removal. Use `offboarded` instead unless you are certain: deleting the
+# account orphans every file it owned and breaks the audit trail.
+
+- name: "Remove sudo rights from {{ user.name }}"
+  ansible.builtin.file:
+    path: "{{ user_lifecycle_sudoers_dir }}/{{ user_lifecycle_sudoers_prefix }}{{ user.name }}"
+    state: absent
+
+- name: "Terminate running processes owned by {{ user.name }}"
+  ansible.builtin.command:
+    cmd: "pkill -TERM -u {{ user.name }}"
+  register: user_lifecycle_pkill
+  failed_when: user_lifecycle_pkill.rc not in [0, 1]
+  changed_when: user_lifecycle_pkill.rc == 0
+
+- name: "Delete the account {{ user.name }}"
+  ansible.builtin.user:
+    name: "{{ user.name }}"
+    state: absent
+    remove: "{{ user.remove_home | default(true) }}"
+    force: true

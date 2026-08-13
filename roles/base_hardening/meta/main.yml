@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: base_hardening
+  namespace: homelab
+  author: homelab
+  description: CIS Benchmark Level 1 baseline for RHEL/Rocky 9 and Ubuntu 22.04
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+    - name: Ubuntu
+      versions: [jammy]
+  galaxy_tags: [security, hardening, cis, compliance, rhel, ubuntu]
+
+dependencies: []

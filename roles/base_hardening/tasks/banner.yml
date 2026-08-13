@@ -1,0 +1,40 @@
+---
+# CIS 1.7 — command line warning banners.
+#
+# /etc/motd, /etc/issue and /etc/issue.net must not leak OS version information
+# (the \m \r \s \v escapes), which is exactly what the stock files contain.
+
+- name: Deploy warning banners
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ base_hardening_banner_text }}"
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+    - /etc/motd
+
+# Ubuntu ships dynamic motd scripts that re-add system information on every login,
+# which silently undoes the file above.
+- name: Disable dynamic motd news on Ubuntu
+  ansible.builtin.lineinfile:
+    path: /etc/default/motd-news
+    regexp: '^ENABLED='
+    line: "ENABLED=0"
+    create: false
+    state: present
+  when: ansible_distribution == 'Ubuntu'
+  failed_when: false
+
+- name: Remove executable bit from dynamic motd scripts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0644"
+  loop:
+    - /etc/update-motd.d/10-help-text
+    - /etc/update-motd.d/50-motd-news
+    - /etc/update-motd.d/91-release-upgrade
+  when: ansible_os_family == 'Debian'
+  failed_when: false

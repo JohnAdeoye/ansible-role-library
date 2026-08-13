@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# CIS 4.1.2 — audit log retention.
+
+log_file = /var/log/audit/audit.log
+log_format = ENRICHED
+log_group = root
+freq = 50
+
+# Rotation. CIS requires that logs are not silently discarded when full.
+max_log_file = {{ base_hardening_auditd_max_log_file }}
+num_logs = {{ base_hardening_auditd_num_logs }}
+max_log_file_action = {{ base_hardening_auditd_max_log_file_action }}
+
+# Disk space actions. admin_space_left_action = halt is what CIS asks for; it does
+# mean the host powers off rather than lose audit records, so make sure your
+# monitoring alerts on space_left_action long before that point.
+space_left = 75
+space_left_action = {{ base_hardening_auditd_space_left_action }}
+action_mail_acct = root
+admin_space_left = 50
+admin_space_left_action = {{ base_hardening_auditd_admin_space_left_action }}
+disk_full_action = {{ base_hardening_auditd_admin_space_left_action }}
+disk_error_action = syslog
+
+flush = incremental_async
+name_format = hostname

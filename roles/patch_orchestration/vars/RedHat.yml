@@ -1,0 +1,5 @@
+---
+# `dnf check-update` exits 100 when updates are available and 0 when none are —
+# neither means "locked". A plain repoquery touches the same lock without
+# changing anything, so a non-zero exit here really does mean contention.
+patch_orchestration_lock_check_cmd: "dnf -q -C repoquery --qf '' kernel"

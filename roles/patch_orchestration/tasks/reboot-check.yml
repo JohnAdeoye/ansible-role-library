@@ -1,0 +1,28 @@
+---
+# Reboot detection differs per distro and neither method is exposed as a fact.
+
+- name: Check for the Debian reboot-required marker
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: patch_orchestration_deb_reboot
+  when: ansible_os_family == 'Debian'
+
+# dnf needs-restarting -r returns 1 when a reboot is required, 0 when it is not.
+- name: Ask dnf whether a reboot is required
+  ansible.builtin.command:
+    cmd: needs-restarting -r
+  register: patch_orchestration_rh_reboot
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == 'RedHat'
+
+- name: Set the reboot-required flag
+  ansible.builtin.set_fact:
+    patch_orchestration_reboot_required: >-
+      {{ (patch_orchestration_deb_reboot.stat.exists | default(false))
+         if ansible_os_family == 'Debian'
+         else (patch_orchestration_rh_reboot.rc | default(0) == 1) }}
+
+- name: Report reboot status
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: reboot required = {{ patch_orchestration_reboot_required }}"

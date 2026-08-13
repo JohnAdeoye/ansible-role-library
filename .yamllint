@@ -1,0 +1,29 @@
+---
+extends: default
+
+rules:
+  # 80 columns is unworkable for Ansible: a module argument with a Jinja
+  # expression routinely exceeds it and wrapping hurts readability more than the
+  # long line does.
+  line-length:
+    max: 160
+    level: warning
+  truthy:
+    # Ansible uses yes/no in plenty of module arguments where they are strings.
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  # ansible-lint requires this off: it indents comments inside task blocks in a
+  # way this rule rejects, and the two tools otherwise disagree on every file.
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
+ignore: |
+  .venv/
+  .ansible_facts/
+  molecule/*/molecule.yml

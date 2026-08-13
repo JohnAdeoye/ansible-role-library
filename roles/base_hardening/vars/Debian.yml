@@ -1,0 +1,42 @@
+---
+# Ubuntu 22.04 LTS (and Debian 11/12). All OS divergence for this family lives here.
+
+base_hardening_ssh_package: openssh-server
+base_hardening_ssh_service: ssh
+base_hardening_sshd_binary: /usr/sbin/sshd
+base_hardening_ssh_sftp_server: /usr/lib/openssh/sftp-server
+# Debian family keeps host keys root:root 0600.
+base_hardening_ssh_keys_group: root
+base_hardening_ssh_keys_mode: "0600"
+
+base_hardening_time_package: chrony
+base_hardening_time_service: chrony
+base_hardening_time_config: /etc/chrony/chrony.conf
+base_hardening_time_template: chrony.conf.j2
+
+base_hardening_auditd_package: auditd
+base_hardening_auditd_service: auditd
+
+base_hardening_pwquality_package: libpam-pwquality
+base_hardening_pwquality_config: /etc/security/pwquality.conf
+
+base_hardening_firewall_package: ufw
+base_hardening_firewall_service: ufw
+
+base_hardening_cron_group: root
+base_hardening_grub_config: /boot/grub/grub.cfg
+
+base_hardening_faillock_config: /etc/security/faillock.conf
+
+base_hardening_login_defs: /etc/login.defs
+
+base_hardening_removed_packages_extra:
+  - telnetd
+  - tftpd
+  - inetutils-telnet
+
+# /etc/shadow is root:shadow on the Debian family.
+base_hardening_shadow_group: shadow
+
+# chrony runs as _chrony on the Debian family.
+base_hardening_chrony_user: _chrony

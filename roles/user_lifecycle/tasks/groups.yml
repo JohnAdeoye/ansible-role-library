@@ -1,0 +1,29 @@
+---
+- name: Manage groups
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    gid: "{{ item.gid | default(omit) }}"
+    system: "{{ item.system | default(false) }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ user_lifecycle_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Secondary groups referenced by a user must exist before useradd runs, or the
+# user task fails with a bare "Group does not exist".
+# Built with an explicit loop rather than a selectattr chain: `state` is optional,
+# and rejectattr on an attribute that is missing raises instead of skipping.
+- name: Ensure every referenced secondary group exists
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: >-
+    {%- set out = [] -%}
+    {%- for u in user_lifecycle_users -%}
+    {%-   if u.state | default('present') == 'present' -%}
+    {%-     for g in u.groups | default(user_lifecycle_default_groups) -%}
+    {%-       if g not in out -%}{{ out.append(g) or '' }}{%- endif -%}
+    {%-     endfor -%}
+    {%-   endif -%}
+    {%- endfor -%}
+    {{ out }}

@@ -1,0 +1,51 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Apply the nginx role
+      ansible.builtin.include_role:
+        name: nginx
+      vars:
+        nginx_sites:
+          - name: static
+            server_name: static.molecule.local
+            listen: 8081
+            root: /var/www/static
+            locations:
+              - path: /
+                try_files: "$uri $uri/ =404"
+                expires: 30d
+
+          - name: proxied
+            server_name: proxied.molecule.local
+            listen: 443
+            redirect_http: false
+            tls:
+              cert: /etc/nginx/ssl/test.crt
+              key: /etc/nginx/ssl/test.key
+            locations:
+              - path: /
+                proxy_pass: http://127.0.0.1:9000
+                rate_limit: general
+                burst: 20
+              - path: /login
+                proxy_pass: http://127.0.0.1:9000
+                rate_limit: login
+              - path: /ws
+                proxy_pass: http://127.0.0.1:9000
+                websocket: true
+              - path: /metrics
+                proxy_pass: http://127.0.0.1:9000
+                allow: ["10.0.0.0/8"]
+
+          - name: disabled-site
+            server_name: nope.molecule.local
+            enabled: false
+            listen: 8082
+  pre_tasks:
+    - name: Create the static document root
+      ansible.builtin.file:
+        path: /var/www/static
+        state: directory
+        mode: "0755"

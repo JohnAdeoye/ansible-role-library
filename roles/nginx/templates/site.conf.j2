@@ -1,0 +1,119 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Site: {{ item.name }} ({{ item.server_name }})
+
+{% set listen_port = item.listen | default(80) %}
+{% set is_tls = item.tls is defined %}
+{% if is_tls and item.redirect_http | default(true) %}
+# Plain HTTP exists only to redirect. No content is served on :80.
+server {
+    listen 80;
+    {% if nginx_ipv6_enabled | default(true) %}
+    listen [::]:80;
+    {% endif %}
+    server_name {{ item.server_name }};
+
+    # ACME challenges must stay on HTTP or certificate renewal breaks.
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ item.acme_root | default('/var/www/html') }};
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+{% endif %}
+
+server {
+    listen {{ listen_port }}{% if is_tls %} ssl{% endif %};
+    {% if nginx_ipv6_enabled | default(true) %}
+    listen [::]:{{ listen_port }}{% if is_tls %} ssl{% endif %};
+    {% endif %}
+    {% if is_tls %}
+    http2 on;
+    {% endif %}
+    server_name {{ item.server_name }};
+
+    {% if is_tls %}
+    ssl_certificate {{ item.tls.cert }};
+    ssl_certificate_key {{ item.tls.key }};
+    {% if item.tls.trusted_cert is defined %}
+    ssl_trusted_certificate {{ item.tls.trusted_cert }};
+    {% endif %}
+    include {{ nginx_conf_dir }}/snippets/tls-params.conf;
+    {% endif %}
+
+    include {{ nginx_conf_dir }}/snippets/security-headers.conf;
+    {% for name, value in (item.headers | default({})).items() %}
+    add_header {{ name }} "{{ value }}" always;
+    {% endfor %}
+
+    {% if item.root is defined %}
+    root {{ item.root }};
+    index {{ item.index | default('index.html') }};
+    {% endif %}
+
+    access_log {{ item.access_log | default('/var/log/nginx/' + item.name + '.access.log') }} {{ nginx_log_format_name }};
+    error_log {{ item.error_log | default('/var/log/nginx/' + item.name + '.error.log') }} {{ nginx_error_log_level }};
+
+    {% if item.client_max_body_size is defined %}
+    client_max_body_size {{ item.client_max_body_size }};
+    {% endif %}
+
+    # Never serve dotfiles — .git, .env and friends.
+    location ~ /\. {
+        deny all;
+        access_log off;
+    }
+
+    {% for loc in item.locations | default([]) %}
+    location {{ loc.match | default('') }} {{ loc.path }} {
+        {% if loc.rate_limit is defined %}
+        limit_req zone={{ loc.rate_limit }}{% if loc.burst is defined %} burst={{ loc.burst }} nodelay{% endif %};
+        {% endif %}
+        {% if loc.conn_limit is defined %}
+        limit_conn {{ loc.conn_limit }} {{ loc.conn_limit_count | default(10) }};
+        {% endif %}
+        {% if loc.proxy_pass is defined %}
+        proxy_pass {{ loc.proxy_pass }};
+        include {{ nginx_conf_dir }}/snippets/proxy-params.conf;
+        {% if loc.proxy_read_timeout is defined %}
+        proxy_read_timeout {{ loc.proxy_read_timeout }};
+        {% endif %}
+        {% if loc.websocket | default(false) %}
+        # WebSocket upgrade. Requires the connection_upgrade map, which lives in
+        # proxy-params.conf.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        {% endif %}
+        {% elif loc.return is defined %}
+        return {{ loc.return }};
+        {% elif loc.alias is defined %}
+        alias {{ loc.alias }};
+        {% elif loc.try_files is defined %}
+        try_files {{ loc.try_files }};
+        {% endif %}
+        {% if loc.expires is defined %}
+        expires {{ loc.expires }};
+        {% endif %}
+        {% if loc.allow is defined %}
+        {% for cidr in loc.allow %}
+        allow {{ cidr }};
+        {% endfor %}
+        deny all;
+        {% endif %}
+        {% if loc.basic_auth is defined %}
+        auth_basic "{{ loc.basic_auth.realm | default('Restricted') }}";
+        auth_basic_user_file {{ loc.basic_auth.user_file }};
+        {% endif %}
+        {% for directive in loc.extra | default([]) %}
+        {{ directive }};
+        {% endfor %}
+    }
+    {% endfor %}
+
+    {% for directive in item.extra | default([]) %}
+    {{ directive }};
+    {% endfor %}
+}

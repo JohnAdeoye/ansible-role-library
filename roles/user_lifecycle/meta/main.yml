@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: user_lifecycle
+  namespace: homelab
+  author: homelab
+  description: Declarative users, groups, sudo and SSH keys with a real offboarding path
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+    - name: Ubuntu
+      versions: [jammy]
+  galaxy_tags: [users, accounts, sudo, ssh, identity]
+
+dependencies: []

@@ -1,0 +1,86 @@
+---
+# CIS 6.1 — permissions on critical system files.
+
+- name: Enforce permissions on password and group files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: root
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/passwd, mode: "0644"}
+    - {path: /etc/passwd-, mode: "0644"}
+    - {path: /etc/group, mode: "0644"}
+    - {path: /etc/group-, mode: "0644"}
+    - {path: /etc/shadow, mode: "0000", group: "{{ base_hardening_shadow_group }}"}
+    - {path: /etc/shadow-, mode: "0000", group: "{{ base_hardening_shadow_group }}"}
+    - {path: /etc/gshadow, mode: "0000", group: "{{ base_hardening_shadow_group }}"}
+    - {path: /etc/gshadow-, mode: "0000", group: "{{ base_hardening_shadow_group }}"}
+  loop_control:
+    label: "{{ item.path }}"
+  failed_when: false   # the dash-suffixed backups do not always exist
+
+- name: Enforce permissions on cron directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0700"
+    state: directory
+  loop:
+    - /etc/cron.d
+    - /etc/cron.daily
+    - /etc/cron.hourly
+    - /etc/cron.monthly
+    - /etc/cron.weekly
+  failed_when: false
+
+- name: Enforce permissions on crontab
+  ansible.builtin.file:
+    path: /etc/crontab
+    owner: root
+    group: root
+    mode: "0600"
+  failed_when: false
+
+- name: Enforce permissions on the bootloader configuration
+  ansible.builtin.file:
+    path: "{{ base_hardening_grub_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not base_hardening_in_container | bool
+  failed_when: false
+
+# Reporting rather than fixing. An unowned file or an unexpected SUID binary needs
+# a human decision — chmod-ing them blind breaks working software.
+# find(1) rather than a shell pipeline: no pipe means no pipefail concern, and
+# the result is truncated in Jinja below instead of by head(1).
+- name: Scan for unowned or ungrouped files
+  ansible.builtin.command:
+    cmd: find / -xdev ( -nouser -o -nogroup ) -not -path /proc/* -print
+  register: base_hardening_unowned
+  changed_when: false
+  failed_when: false
+
+- name: Report unowned or ungrouped files
+  ansible.builtin.debug:
+    msg: >-
+      CIS 6.1.9/6.1.10: {{ base_hardening_unowned.stdout_lines | length }} unowned or
+      ungrouped file(s) found. These need review by hand:
+      {{ base_hardening_unowned.stdout_lines[:100] }}
+  when: base_hardening_unowned.stdout_lines | length > 0
+
+- name: Scan for world-writable files
+  ansible.builtin.command:
+    cmd: find / -xdev -type f -perm -0002 -not -path /proc/* -print
+  register: base_hardening_world_writable
+  changed_when: false
+  failed_when: false
+
+- name: Report world-writable files
+  ansible.builtin.debug:
+    msg: >-
+      CIS 6.1.8: {{ base_hardening_world_writable.stdout_lines | length }} world-writable
+      file(s) found: {{ base_hardening_world_writable.stdout_lines[:100] }}
+  when: base_hardening_world_writable.stdout_lines | length > 0

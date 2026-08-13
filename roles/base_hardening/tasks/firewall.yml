@@ -1,0 +1,97 @@
+---
+# CIS 3.4 — host-based firewall.
+#
+# firewalld on RHEL, ufw on Ubuntu. Rules are applied before the default policy is
+# flipped to deny, so an SSH session is never cut mid-play.
+
+- name: Install the host firewall package
+  ansible.builtin.package:
+    name: "{{ base_hardening_firewall_package }}"
+    state: present
+
+# ---------------------------------------------------------------- RedHat / firewalld
+- name: Ensure firewalld is running
+  ansible.builtin.service:
+    name: "{{ base_hardening_firewall_service }}"
+    state: started
+    enabled: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+
+- name: Allow inbound TCP ports (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ base_hardening_firewall_allowed_tcp }}"
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+
+- name: Allow inbound UDP ports (firewalld)
+  ansible.posix.firewalld:
+    port: "{{ item }}/udp"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ base_hardening_firewall_allowed_udp }}"
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+
+- name: Set the default firewalld zone target
+  ansible.posix.firewalld:
+    zone: public
+    target: "{{ 'DROP' if base_hardening_firewall_default_policy == 'deny' else 'default' }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+
+# ------------------------------------------------------------------- Debian / ufw
+- name: Allow inbound TCP ports (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ base_hardening_firewall_allowed_tcp }}"
+  when:
+    - ansible_os_family == 'Debian'
+    - not base_hardening_in_container | bool
+
+- name: Allow inbound UDP ports (ufw)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: udp
+  loop: "{{ base_hardening_firewall_allowed_udp }}"
+  when:
+    - ansible_os_family == 'Debian'
+    - not base_hardening_in_container | bool
+
+# Loopback traffic must be explicitly permitted before a default-deny policy,
+# otherwise local services that talk over 127.0.0.1 break. CIS 3.4.2.2.
+- name: Permit loopback traffic (ufw)
+  community.general.ufw:
+    rule: allow
+    direction: "{{ item }}"
+    interface: lo
+  loop: [in, out]
+  when:
+    - ansible_os_family == 'Debian'
+    - not base_hardening_in_container | bool
+
+- name: Set ufw default policies and enable
+  community.general.ufw:
+    state: enabled
+    policy: "{{ base_hardening_firewall_default_policy }}"
+    direction: incoming
+  when:
+    - ansible_os_family == 'Debian'
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool

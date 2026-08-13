@@ -1,0 +1,57 @@
+---
+# Facts derived from the password database that several control groups need.
+#
+# Kept in one place so the parsing logic exists once. getent is used rather than
+# reading /etc/passwd directly so that hosts joined to LDAP/SSSD report the truth.
+#
+# getent_passwd maps name -> [passwd, uid, gid, gecos, home, shell].
+# UID comparisons go through `| int` deliberately: these fields are strings, and a
+# string comparison would put "9" above "1000".
+
+- name: Read the password database
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Identify accounts with UID 0
+  ansible.builtin.set_fact:
+    base_hardening_uid_zero_accounts: >-
+      {%- set out = [] -%}
+      {%- for name, e in ansible_facts.getent_passwd.items() -%}
+      {%-   if e[1] | int == 0 -%}{{ out.append(name) or '' }}{%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Identify interactive (human) accounts
+  ansible.builtin.set_fact:
+    base_hardening_interactive_users: >-
+      {%- set out = [] -%}
+      {%- for name, e in ansible_facts.getent_passwd.items() -%}
+      {%-   if e[1] | int >= base_hardening_uid_min | int
+              and e[1] | int != 65534
+              and e[5] is not search(base_hardening_nologin_shell_pattern) -%}
+      {{ out.append(name) or '' }}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Identify system accounts that still have a login shell
+  ansible.builtin.set_fact:
+    base_hardening_system_accounts_with_shells: >-
+      {%- set out = [] -%}
+      {%- for name, e in ansible_facts.getent_passwd.items() -%}
+      {%-   if e[1] | int != 0
+              and e[1] | int < base_hardening_uid_min | int
+              and name not in base_hardening_system_account_shell_exceptions
+              and e[5] is not search(base_hardening_nologin_shell_pattern) -%}
+      {{ out.append(name) or '' }}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Show the derived account classification
+  ansible.builtin.debug:
+    msg:
+      uid_zero: "{{ base_hardening_uid_zero_accounts }}"
+      interactive: "{{ base_hardening_interactive_users }}"
+      system_with_shells: "{{ base_hardening_system_accounts_with_shells }}"
+    verbosity: 1

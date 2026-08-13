@@ -1,0 +1,14 @@
+---
+- name: Reboot the host and wait for it to return
+  ansible.builtin.reboot:
+    msg: "{{ patch_orchestration_reboot_message }}"
+    reboot_timeout: "{{ patch_orchestration_reboot_timeout }}"
+    post_reboot_delay: "{{ patch_orchestration_post_reboot_delay }}"
+    # A host that reaches this is up enough to run a command over SSH.
+    test_command: whoami
+  when: not (patch_orchestration_in_container | default(false)) | bool
+
+- name: Skip reboot in a container
+  ansible.builtin.debug:
+    msg: "Container target — reboot skipped."
+  when: (patch_orchestration_in_container | default(false)) | bool

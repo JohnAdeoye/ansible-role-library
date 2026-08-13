@@ -1,0 +1,14 @@
+---
+# Snapshot hook. Deliberately a command rather than a specific provider module:
+# the hypervisor differs per environment, and the role should not care.
+
+- name: Take a pre-patch snapshot
+  ansible.builtin.command:
+    cmd: "{{ patch_orchestration_snapshot_command }}"
+  delegate_to: "{{ patch_orchestration_snapshot_delegate }}"
+  register: patch_orchestration_snapshot_result
+  changed_when: patch_orchestration_snapshot_result.rc == 0
+
+- name: Report the snapshot result
+  ansible.builtin.debug:
+    msg: "Snapshot for {{ inventory_hostname }}: {{ patch_orchestration_snapshot_result.stdout | default('(no output)') }}"

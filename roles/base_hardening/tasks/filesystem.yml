@@ -1,0 +1,84 @@
+---
+# CIS 1.1 — filesystem kernel modules and mount options.
+
+# A modprobe blacklist alone is not enough: `blacklist` only stops *automatic*
+# loading, an explicit `modprobe cramfs` still works. Setting the install command
+# to /bin/false is what actually prevents loading.
+- name: Prevent unused filesystem modules from loading
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/99-cis-filesystems.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 1.1.1 — disable unused filesystem kernel modules.
+      {% for fs in base_hardening_blocked_filesystems %}
+      install {{ fs }} /bin/false
+      blacklist {{ fs }}
+      {% endfor %}
+  when: not base_hardening_in_container | bool
+
+- name: Unload any blocked filesystem module that is currently loaded
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ base_hardening_blocked_filesystems }}"
+  when:
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+  failed_when: false   # module may be built in, or in use by an existing mount
+  changed_when: false
+
+# Only touch mount points that are already their own filesystem. Rewriting fstab
+# for a path that lives on / would be a no-op at best and unbootable at worst.
+- name: Read the current mount table
+  ansible.builtin.set_fact:
+    base_hardening_existing_mounts: "{{ ansible_mounts | map(attribute='mount') | list }}"
+
+- name: Enforce nosuid/nodev/noexec on separate partitions
+  ansible.posix.mount:
+    path: "{{ item.key }}"
+    src: "{{ (ansible_mounts | selectattr('mount', 'equalto', item.key) | first).device }}"
+    fstype: "{{ (ansible_mounts | selectattr('mount', 'equalto', item.key) | first).fstype }}"
+    opts: "{{ item.value }}"
+    state: mounted
+  loop: "{{ base_hardening_mount_options | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} -> {{ item.value }}"
+  when:
+    - not base_hardening_in_container | bool
+    - item.key in base_hardening_existing_mounts
+    - base_hardening_enforce | bool
+
+- name: Report mount points that are not separate partitions
+  ansible.builtin.debug:
+    msg: >-
+      {{ base_hardening_mount_options.keys() | difference(base_hardening_existing_mounts) | list }}
+      are not separate filesystems on this host, so CIS mount options cannot be
+      applied. This needs a partitioning change at build time — see
+      docs/cis-mapping.md.
+  when: base_hardening_mount_options.keys() | difference(base_hardening_existing_mounts) | length > 0
+
+# /dev/shm is a tmpfs that always exists; it is handled through fstab like the rest
+# but is worth calling out because a missing entry means default (exec-able) options.
+- name: Ensure /dev/shm is mounted with hardened options
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ base_hardening_mount_options['/dev/shm'] }}"
+    state: mounted
+  when:
+    - not base_hardening_in_container | bool
+    - "'/dev/shm' in base_hardening_mount_options"
+    - base_hardening_enforce | bool
+
+- name: Disable automounting of removable media
+  ansible.builtin.systemd:
+    name: autofs
+    enabled: false
+    state: stopped
+    masked: true
+  when: not base_hardening_in_container | bool
+  failed_when: false

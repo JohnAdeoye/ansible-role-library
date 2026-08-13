@@ -1,0 +1,4 @@
+---
+# This role has no handlers: everything it does is ordered and synchronous by
+# design, because deferring a reboot or a health check to the end of the play
+# would defeat the point of batching with `serial`.

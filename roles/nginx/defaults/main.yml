@@ -1,0 +1,107 @@
+---
+# roles/nginx/defaults/main.yml
+
+nginx_state: present            # present | absent
+nginx_service_enabled: true
+
+# Worker tuning. `auto` maps workers to core count.
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_worker_rlimit_nofile: 8192
+nginx_keepalive_timeout: 65
+nginx_client_max_body_size: 16m
+nginx_server_tokens: "off"      # do not advertise the version number
+
+# ---------------------------------------------------------------------------
+# TLS
+# ---------------------------------------------------------------------------
+nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
+nginx_ssl_ciphers: >-
+  ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:
+  ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:
+  ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
+nginx_ssl_prefer_server_ciphers: "off"   # irrelevant for 1.3, harmful for 1.2 client choice
+nginx_ssl_session_timeout: 1d
+nginx_ssl_session_cache: "shared:SSL:10m"
+nginx_ssl_session_tickets: "off"
+nginx_ssl_stapling: true
+
+# HSTS is off by default: switching it on is effectively irreversible for the
+# max-age duration, and getting it wrong on an internal domain is painful.
+nginx_hsts_enabled: false
+nginx_hsts_max_age: 31536000
+nginx_hsts_include_subdomains: true
+
+# ---------------------------------------------------------------------------
+# Security headers applied to every site (override per site with `headers`)
+# ---------------------------------------------------------------------------
+nginx_security_headers:
+  X-Frame-Options: "SAMEORIGIN"
+  X-Content-Type-Options: "nosniff"
+  Referrer-Policy: "strict-origin-when-cross-origin"
+  Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+
+# ---------------------------------------------------------------------------
+# Rate limiting — zones are declared here, applied per location
+# ---------------------------------------------------------------------------
+nginx_rate_limit_zones:
+  - name: general
+    key: "$binary_remote_addr"
+    size: 10m
+    rate: "30r/s"
+  - name: login
+    key: "$binary_remote_addr"
+    size: 10m
+    rate: "5r/m"
+
+nginx_connection_limit_zones:
+  - name: addr
+    key: "$binary_remote_addr"
+    size: 10m
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+nginx_log_format_name: main
+# Includes upstream timings, which is what you actually need when a service is slow.
+nginx_log_format: >-
+  '$remote_addr - $remote_user [$time_local] "$request" '
+  '$status $body_bytes_sent "$http_referer" "$http_user_agent" '
+  'rt=$request_time uct="$upstream_connect_time" uht="$upstream_header_time" urt="$upstream_response_time"'
+
+nginx_access_log: /var/log/nginx/access.log
+nginx_error_log: /var/log/nginx/error.log
+nginx_error_log_level: warn
+nginx_logrotate_enabled: true
+nginx_logrotate_rotate: 14
+
+# ---------------------------------------------------------------------------
+# Sites
+# ---------------------------------------------------------------------------
+# Each entry renders one server block. See README for the full schema; the
+# argument spec in meta/argument_specs.yml is the authoritative version.
+#
+#   - name: app                       # file name in sites-available
+#     server_name: app.example.com
+#     listen: 443                     # 443 implies TLS
+#     tls:
+#       cert: /etc/ssl/certs/app.crt
+#       key:  /etc/ssl/private/app.key
+#     redirect_http: true             # add a :80 -> :443 301 block
+#     root: /var/www/app              # static content
+#     locations:
+#       - path: /
+#         proxy_pass: http://127.0.0.1:8080
+#         rate_limit: general
+#       - path: /login
+#         proxy_pass: http://127.0.0.1:8080
+#         rate_limit: login
+nginx_sites: []
+
+# Remove the distro's default site, which serves a welcome page on :80.
+nginx_remove_default_site: true
+
+# Status endpoint for Prometheus nginx-exporter. Bound to localhost only.
+nginx_status_enabled: true
+nginx_status_port: 8080
+nginx_status_allow: ["127.0.0.1", "::1"]

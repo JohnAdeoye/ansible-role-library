@@ -1,0 +1,51 @@
+---
+# RHEL / Rocky 9.
+
+# noqa package-latest — pinning versions would defeat the point of a
+# patching role. Which updates are eligible is controlled by
+# patch_orchestration_scope and patch_orchestration_exclude.
+- name: Apply security updates only  # noqa package-latest
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    security: true
+    exclude: "{{ patch_orchestration_exclude }}"
+    update_cache: true
+  register: patch_orchestration_dnf_result
+  when: patch_orchestration_scope == 'security'
+
+# noqa package-latest — pinning versions would defeat the point of a
+# patching role. Which updates are eligible is controlled by
+# patch_orchestration_scope and patch_orchestration_exclude.
+- name: Apply all available updates  # noqa package-latest
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    exclude: "{{ patch_orchestration_exclude }}"
+    update_cache: true
+  register: patch_orchestration_dnf_all
+  when: patch_orchestration_scope == 'all'
+
+# noqa package-latest — pinning versions would defeat the point of a
+# patching role. Which updates are eligible is controlled by
+# patch_orchestration_scope and patch_orchestration_exclude.
+- name: Apply bugfix and security updates only  # noqa package-latest
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    bugfix: true
+    security: true
+    exclude: "{{ patch_orchestration_exclude }}"
+    update_cache: true
+  register: patch_orchestration_dnf_minimal
+  when: patch_orchestration_scope == 'minimal'
+
+- name: Consolidate the patch result
+  ansible.builtin.set_fact:
+    patch_orchestration_result: "{{ patch_orchestration_dnf_result if patch_orchestration_scope == 'security'
+                      else patch_orchestration_dnf_all if patch_orchestration_scope == 'all'
+                      else patch_orchestration_dnf_minimal }}"
+
+- name: Remove packages that are no longer required
+  ansible.builtin.dnf:
+    autoremove: true

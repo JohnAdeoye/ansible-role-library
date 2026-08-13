@@ -1,0 +1,63 @@
+---
+# CIS 4.2 — logging configuration and log file permissions.
+
+- name: Ensure the journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not base_hardening_in_container | bool
+
+- name: Configure journald
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/99-cis.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 4.2.2 — journald.
+      [Journal]
+      Storage=persistent
+      Compress=yes
+      ForwardToSyslog=yes
+      SystemMaxUse={{ base_hardening_journald_max_use }}
+      SystemMaxFileSize={{ base_hardening_journald_max_file_size }}
+  notify: Restart journald
+  when: not base_hardening_in_container | bool
+
+# rsyslog is optional on both distros now that journald is the primary sink,
+# so its config is only touched when it is actually installed.
+- name: Check whether rsyslog is installed
+  ansible.builtin.stat:
+    path: /etc/rsyslog.conf
+  register: base_hardening_rsyslog_conf
+
+- name: Set a restrictive default creation mode for rsyslog files
+  ansible.builtin.lineinfile:
+    path: /etc/rsyslog.conf
+    regexp: '^\$FileCreateMode'
+    line: "$FileCreateMode 0640"
+    state: present
+  notify: Restart rsyslog
+  when: base_hardening_rsyslog_conf.stat.exists
+
+# CIS 4.2.3 — no world-readable logs. Walking /var/log rather than listing files
+# explicitly, because what lives there depends on which services are installed.
+- name: Find world-readable or group-writable files under /var/log
+  ansible.builtin.command:
+    cmd: find /var/log -type f -perm /o+rwx -o -type f -perm /g+wx
+  register: base_hardening_bad_log_perms
+  changed_when: false
+  failed_when: false
+
+- name: Remove excess permissions from log files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0640"
+  loop: "{{ base_hardening_bad_log_perms.stdout_lines }}"
+  when:
+    - base_hardening_enforce | bool
+    - base_hardening_bad_log_perms.stdout_lines | length > 0

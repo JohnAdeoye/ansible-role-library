@@ -1,0 +1,11 @@
+---
+# Rolling fleet patch.
+
+- name: Patch the fleet in batches
+  hosts: "{{ target | default('all') }}"
+  become: true
+  serial: "{{ batch | default('25%') }}"
+  max_fail_percentage: 0
+  any_errors_fatal: false
+  roles:
+    - role: patch_orchestration

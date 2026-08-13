@@ -1,0 +1,44 @@
+---
+# RHEL / Rocky / AlmaLinux 9. All OS divergence for this family lives here.
+
+base_hardening_ssh_package: openssh-server
+base_hardening_ssh_service: sshd
+base_hardening_sshd_binary: /usr/sbin/sshd
+base_hardening_ssh_sftp_server: /usr/libexec/openssh/sftp-server
+# RHEL 9 ships host keys as root:ssh_keys 0640.
+base_hardening_ssh_keys_group: ssh_keys
+base_hardening_ssh_keys_mode: "0640"
+
+base_hardening_time_package: chrony
+base_hardening_time_service: chronyd
+base_hardening_time_config: /etc/chrony.conf
+base_hardening_time_template: chrony.conf.j2
+
+base_hardening_auditd_package: audit
+base_hardening_auditd_service: auditd
+
+base_hardening_pwquality_package: libpwquality
+base_hardening_pwquality_config: /etc/security/pwquality.conf
+
+base_hardening_firewall_package: firewalld
+base_hardening_firewall_service: firewalld
+
+base_hardening_cron_group: root
+base_hardening_grub_config: /boot/grub2/grub.cfg
+
+# faillock is the RHEL 9 lockout mechanism (pam_faillock), configured via
+# /etc/security/faillock.conf rather than inline pam arguments.
+base_hardening_faillock_config: /etc/security/faillock.conf
+
+base_hardening_login_defs: /etc/login.defs
+
+# Packages that are RHEL-specific names for the insecure clients CIS flags.
+base_hardening_removed_packages_extra:
+  - telnet-server
+  - tftp-server
+
+# /etc/shadow is root:root on RHEL.
+base_hardening_shadow_group: root
+
+# chrony runs as this user (CIS 2.1.2).
+base_hardening_chrony_user: chrony

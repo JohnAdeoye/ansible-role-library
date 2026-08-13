@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+/var/log/nginx/*.log {
+    daily
+    missingok
+    rotate {{ nginx_logrotate_rotate }}
+    compress
+    delaycompress
+    notifempty
+    create 0640 {{ nginx_user }} adm
+    sharedscripts
+    postrotate
+        # USR1 makes the workers reopen their log files without dropping
+        # in-flight connections. A restart here would.
+        [ -f {{ nginx_pid_file }} ] && kill -USR1 `cat {{ nginx_pid_file }}`
+    endscript
+}

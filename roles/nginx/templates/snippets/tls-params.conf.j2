@@ -1,0 +1,25 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Shared TLS parameters. Included by every TLS server block.
+
+ssl_protocols {{ nginx_ssl_protocols }};
+ssl_ciphers {{ nginx_ssl_ciphers | replace('\n', '') | replace(' ', '') }};
+ssl_prefer_server_ciphers {{ nginx_ssl_prefer_server_ciphers }};
+
+ssl_session_timeout {{ nginx_ssl_session_timeout }};
+ssl_session_cache {{ nginx_ssl_session_cache }};
+# Session tickets without rotation weaken forward secrecy, and NGINX does not
+# rotate the key on its own.
+ssl_session_tickets {{ nginx_ssl_session_tickets }};
+
+{% if nginx_ssl_stapling %}
+ssl_stapling on;
+ssl_stapling_verify on;
+resolver {{ nginx_resolver | default('127.0.0.53') }} valid=300s;
+resolver_timeout 5s;
+{% endif %}
+
+{% if nginx_hsts_enabled %}
+# HSTS. This is effectively irreversible for max-age once a browser has seen it.
+add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age }}{% if nginx_hsts_include_subdomains %}; includeSubDomains{% endif %}" always;
+{% endif %}

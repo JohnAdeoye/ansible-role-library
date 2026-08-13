@@ -1,0 +1,48 @@
+---
+# Handlers are all guarded against the container case: there is no systemd to talk
+# to in a Molecule container, and a failed handler would mask a real test result.
+
+- name: Reload sshd
+  ansible.builtin.service:
+    name: "{{ base_hardening_ssh_service }}"
+    state: reloaded
+  when: not base_hardening_in_container | bool
+
+- name: Reload sysctl
+  ansible.builtin.command:
+    cmd: sysctl --system
+  changed_when: true
+  when: not base_hardening_in_container | bool
+
+# noqa command-instead-of-module — auditd sets RefuseManualStop=yes, so the
+# service module (which shells out to systemctl) fails with "Operation refused".
+# service(8) is the vendor-supported path and the only one that works.
+- name: Restart auditd  # noqa command-instead-of-module
+  ansible.builtin.command:
+    cmd: service auditd restart
+  changed_when: true
+  when: not base_hardening_in_container | bool
+
+- name: Reload audit rules
+  ansible.builtin.command:
+    cmd: augenrules --load
+  changed_when: true
+  when: not base_hardening_in_container | bool
+
+- name: Restart chrony
+  ansible.builtin.service:
+    name: "{{ base_hardening_time_service }}"
+    state: restarted
+  when: not base_hardening_in_container | bool
+
+- name: Restart journald
+  ansible.builtin.service:
+    name: systemd-journald
+    state: restarted
+  when: not base_hardening_in_container | bool
+
+- name: Restart rsyslog
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
+  when: not base_hardening_in_container | bool

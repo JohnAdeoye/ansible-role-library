@@ -1,0 +1,52 @@
+---
+# roles/user_lifecycle/defaults/main.yml
+
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+#   - name: jdoe
+#     comment: "Jane Doe"
+#     state: present            # present | offboarded | absent
+#     uid: 2001                 # optional; pin for consistency across hosts
+#     groups: [wheel, docker]
+#     shell: /bin/bash
+#     ssh_keys:
+#       - "ssh-ed25519 AAAA... jdoe@laptop"
+#     sudo: full                # false | full | nopasswd | [list of commands]
+#     password: "$6$..."        # crypt hash, never plaintext
+user_lifecycle_users: []
+
+# Applied to every user unless overridden per entry.
+user_lifecycle_default_shell: /bin/bash
+user_lifecycle_default_groups: []
+user_lifecycle_create_home: true
+user_lifecycle_home_mode: "0750"
+user_lifecycle_password_lock_on_create: true
+
+# When true, an SSH key present on the host but absent from ssh_keys is removed.
+# This is what makes the role declarative rather than additive — leave it on, or
+# a revoked key survives forever.
+user_lifecycle_exclusive_keys: true
+
+# ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
+user_lifecycle_groups: []
+
+# ---------------------------------------------------------------------------
+# Offboarding
+# ---------------------------------------------------------------------------
+user_lifecycle_offboard_archive: true
+user_lifecycle_offboard_archive_dir: /var/archive/users
+user_lifecycle_offboard_remove_home: false
+user_lifecycle_offboard_remove_account: false
+user_lifecycle_offboard_kill_processes: true
+# Shell assigned to an offboarded account.
+user_lifecycle_offboard_shell: /usr/sbin/nologin
+
+# ---------------------------------------------------------------------------
+# Sudo
+# ---------------------------------------------------------------------------
+user_lifecycle_sudoers_dir: /etc/sudoers.d
+# Prefix keeps role-managed files identifiable and sorts them after distro defaults.
+user_lifecycle_sudoers_prefix: "90-ansible-"

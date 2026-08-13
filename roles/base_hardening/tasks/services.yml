@@ -1,0 +1,26 @@
+---
+# CIS 2.2 — special purpose services.
+
+- name: Determine which unwanted services actually exist on this host
+  ansible.builtin.service_facts:
+  when: not base_hardening_in_container | bool
+
+# Masking rather than disabling: a disabled unit can still be pulled in by a
+# socket unit or a dependency. Masking symlinks it to /dev/null so it cannot start.
+- name: Mask unnecessary services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: "{{ base_hardening_masked_services }}"
+  when:
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+    - (item + '.service') in (ansible_facts.services | default({}))
+
+- name: Remove insecure client packages
+  ansible.builtin.package:
+    name: "{{ base_hardening_removed_packages + (base_hardening_removed_packages_extra | default([])) }}"
+    state: absent
+  when: base_hardening_enforce | bool

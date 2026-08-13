@@ -1,0 +1,33 @@
+---
+- name: Validate the user list before changing anything
+  ansible.builtin.include_tasks: validate.yml
+  tags: [always]
+
+- name: Manage groups
+  ansible.builtin.include_tasks: groups.yml
+  tags: [users, groups]
+
+- name: Provision and update accounts
+  ansible.builtin.include_tasks: provision.yml
+  loop: "{{ user_lifecycle_users | rejectattr('state', 'defined') | list
+            + user_lifecycle_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'present') | list }}"
+  loop_control:
+    loop_var: user
+    label: "{{ user.name }}"
+  tags: [users, provision]
+
+- name: Offboard departed accounts
+  ansible.builtin.include_tasks: offboard.yml
+  loop: "{{ user_lifecycle_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'offboarded') | list }}"
+  loop_control:
+    loop_var: user
+    label: "{{ user.name }}"
+  tags: [users, offboard]
+
+- name: Remove accounts marked absent
+  ansible.builtin.include_tasks: remove.yml
+  loop: "{{ user_lifecycle_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'absent') | list }}"
+  loop_control:
+    loop_var: user
+    label: "{{ user.name }}"
+  tags: [users, remove]

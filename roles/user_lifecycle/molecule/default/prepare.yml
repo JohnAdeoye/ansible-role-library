@@ -1,0 +1,50 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Install prerequisites
+      ansible.builtin.package:
+        name: [sudo, procps, tar, gzip]
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Install prerequisites
+      ansible.builtin.package:
+        name: [sudo, procps-ng, tar, gzip, shadow-utils]
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    # An account that already exists, with a key and sudo rights, so the
+    # offboarding path has something real to revoke.
+    - name: Create a pre-existing account to offboard
+      ansible.builtin.user:
+        name: leaver
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Give the leaver an authorized key
+      ansible.posix.authorized_key:
+        user: leaver
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL0old0key0that0must0be0revoked leaver@old"
+        state: present
+
+    - name: Give the leaver some data
+      ansible.builtin.copy:
+        dest: /home/leaver/important.txt
+        content: "work product that must survive offboarding\n"
+        owner: leaver
+        mode: "0644"
+
+    - name: Give the leaver sudo rights
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-ansible-leaver
+        content: "leaver ALL=(ALL:ALL) ALL\n"
+        mode: "0440"
+        validate: "visudo -cf %s"

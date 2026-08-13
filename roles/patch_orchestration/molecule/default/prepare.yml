@@ -1,0 +1,21 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Install tools the role expects
+      ansible.builtin.package:
+        name: "{{ ['procps'] if ansible_os_family == 'Debian' else ['procps-ng', 'dnf-utils'] }}"
+        state: present
+
+    # Downgrade something so there is a real update to apply, rather than a
+    # converge that trivially finds nothing to do.
+    - name: Install an older package version to be updated
+      ansible.builtin.package:
+        name: curl
+        state: present

@@ -1,0 +1,60 @@
+---
+# roles/patch_orchestration/defaults/main.yml
+
+# What to patch. `security` uses dnf --security / unattended-upgrades semantics.
+patch_orchestration_scope: all                  # all | security | minimal
+patch_orchestration_exclude: []                 # package name globs to hold back
+patch_orchestration_state: latest               # latest | installed (installed = no-op check)
+
+# ---------------------------------------------------------------------------
+# Pre-flight
+# ---------------------------------------------------------------------------
+patch_orchestration_preflight_enabled: true
+# Refuse to patch a host with less free space than this on /, /var and /boot.
+# /boot is the one that actually bites: kernel packages fail to install on a full
+# /boot and leave dnf in a half-applied state.
+patch_orchestration_min_free_mb:
+  /: 2048
+  /var: 2048
+  /boot: 512
+
+# Abort if any of these services is not running before we start. Patching a host
+# that is already broken makes the postmortem much harder.
+patch_orchestration_required_services: []
+
+# Abort if the host is already pending a reboot from a previous run.
+patch_orchestration_fail_if_reboot_pending: false
+
+# ---------------------------------------------------------------------------
+# Snapshot hook
+# ---------------------------------------------------------------------------
+patch_orchestration_snapshot_enabled: false
+patch_orchestration_snapshot_command: ""
+patch_orchestration_snapshot_delegate: localhost
+
+# ---------------------------------------------------------------------------
+# Reboot
+# ---------------------------------------------------------------------------
+patch_orchestration_reboot: when-needed         # never | when-needed | always
+patch_orchestration_reboot_timeout: 600
+patch_orchestration_reboot_message: "Rebooting after scheduled patching"
+# Time to settle after boot before the health check runs. Services that start
+# slowly will fail an immediate probe and trigger a false rollback signal.
+patch_orchestration_post_reboot_delay: 30
+
+# ---------------------------------------------------------------------------
+# Health gate
+# ---------------------------------------------------------------------------
+patch_orchestration_health_enabled: true
+patch_orchestration_health_services: "{{ patch_orchestration_required_services }}"
+patch_orchestration_health_url: ""              # optional HTTP probe
+patch_orchestration_health_url_status: 200
+patch_orchestration_health_retries: 10
+patch_orchestration_health_delay: 15
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+# Written to the controller so you have a record of what changed on each host.
+patch_orchestration_report_enabled: true
+patch_orchestration_report_dir: "./patch-reports"

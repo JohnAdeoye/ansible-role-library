@@ -1,0 +1,146 @@
+---
+# Typed public interface. Bad input fails before the first task runs, with a
+# message naming the variable — rather than halfway through, with a Jinja traceback.
+
+argument_specs:
+  main:
+    short_description: CIS Level 1 baseline for RHEL 9 and Ubuntu 22.04
+    description:
+      - Applies CIS Benchmark Level 1 controls to a RHEL/Rocky 9 or Ubuntu 22.04 host.
+      - Each control group can be enabled independently for incremental adoption.
+    options:
+      base_hardening_enforce:
+        type: bool
+        default: true
+        description:
+          - When false, tasks that change live system state are skipped so a run
+            can be used to preview the diff. File templating still happens.
+
+      base_hardening_filesystem_enabled: {type: bool, default: true, description: [Apply CIS 1.1 filesystem controls.]}
+      base_hardening_banner_enabled: {type: bool, default: true, description: [Apply CIS 1.7 warning banners.]}
+      base_hardening_time_enabled: {type: bool, default: true, description: [Apply CIS 2.1 time synchronisation.]}
+      base_hardening_services_enabled: {type: bool, default: true, description: [Apply CIS 2.2 service removal.]}
+      base_hardening_sysctl_enabled: {type: bool, default: true, description: [Apply CIS 3.x kernel parameters.]}
+      base_hardening_firewall_enabled: {type: bool, default: true, description: [Apply CIS 3.4 host firewall.]}
+      base_hardening_auditd_enabled: {type: bool, default: true, description: [Apply CIS 4.1 audit rules.]}
+      base_hardening_logging_enabled: {type: bool, default: true, description: [Apply CIS 4.2 logging controls.]}
+      base_hardening_ssh_enabled: {type: bool, default: true, description: [Apply CIS 5.2 sshd configuration.]}
+      base_hardening_pam_enabled: {type: bool, default: true, description: [Apply CIS 5.3 PAM controls.]}
+      base_hardening_accounts_enabled: {type: bool, default: true, description: [Apply CIS 5.4 account policy.]}
+      base_hardening_permissions_enabled: {type: bool, default: true, description: [Apply CIS 6.1 file permissions.]}
+
+      base_hardening_blocked_filesystems:
+        type: list
+        elements: str
+        description: [Filesystem kernel modules prevented from loading.]
+
+      base_hardening_mount_options:
+        type: dict
+        description:
+          - Map of mount point to fstab options.
+          - Only applied where the mount point is already a separate filesystem.
+
+      base_hardening_ipv6_enabled:
+        type: bool
+        default: true
+        description: [When false, IPv6 is disabled at the kernel level.]
+
+      base_hardening_sysctl:
+        type: dict
+        description: [Kernel parameters applied to every host.]
+
+      base_hardening_ssh_port:
+        type: int
+        default: 22
+        description: [Port sshd listens on.]
+
+      base_hardening_ssh_permit_root_login:
+        type: str
+        default: "no"
+        choices: ["yes", "no", "prohibit-password", "forced-commands-only"]
+        description: [Value of the PermitRootLogin directive.]
+
+      base_hardening_ssh_password_authentication:
+        type: str
+        default: "no"
+        choices: ["yes", "no"]
+        description: [Value of the PasswordAuthentication directive.]
+
+      base_hardening_ssh_max_auth_tries:
+        type: int
+        default: 4
+        description: [MaxAuthTries. CIS requires 4 or fewer.]
+
+      base_hardening_ssh_allow_groups:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Groups permitted to log in over SSH.
+          - Empty means no AllowGroups directive is written. Set this only once you
+            have confirmed the group exists and contains your admin users.
+
+      base_hardening_ssh_ciphers: {type: list, elements: str, description: [Permitted SSH ciphers.]}
+      base_hardening_ssh_macs: {type: list, elements: str, description: [Permitted SSH MAC algorithms.]}
+      base_hardening_ssh_kex_algorithms: {type: list, elements: str, description: [Permitted SSH key exchange algorithms.]}
+
+      base_hardening_firewall_default_policy:
+        type: str
+        default: deny
+        choices: [deny, allow, reject]
+        description: [Default inbound policy for the host firewall.]
+
+      base_hardening_firewall_allowed_tcp:
+        type: list
+        elements: int
+        default: [22]
+        description: [Inbound TCP ports to permit. Must include your SSH port.]
+
+      base_hardening_firewall_allowed_udp:
+        type: list
+        elements: int
+        default: []
+        description: [Inbound UDP ports to permit.]
+
+      base_hardening_auditd_immutable:
+        type: bool
+        default: false
+        description:
+          - Set audit rules immutable (-e 2). Requires a reboot to change afterwards.
+
+      base_hardening_pwquality_minlen:
+        type: int
+        default: 14
+        description: [Minimum password length. CIS requires 14 or more.]
+
+      base_hardening_lockout_attempts:
+        type: int
+        default: 5
+        description: [Failed logins before lockout. CIS requires 5 or fewer.]
+
+      base_hardening_lockout_include_root:
+        type: bool
+        default: false
+        description:
+          - Apply lockout to root as well. Only enable where you have console or
+            out-of-band access.
+
+      base_hardening_pass_max_days:
+        type: int
+        default: 365
+        description: [Maximum password age in days.]
+
+      base_hardening_umask:
+        type: str
+        default: "027"
+        description: [Default umask for interactive shells and login.defs.]
+
+      base_hardening_uid_min:
+        type: int
+        default: 1000
+        description: [Lowest UID considered a human account.]
+
+      base_hardening_su_group:
+        type: str
+        default: wheel
+        description: [Group whose members may run su.]

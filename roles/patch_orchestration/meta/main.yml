@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: patch_orchestration
+  namespace: homelab
+  author: homelab
+  description: Serialised fleet patching with pre-flight checks, health gating and reporting
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+    - name: Ubuntu
+      versions: [jammy]
+  galaxy_tags: [patching, updates, maintenance, operations]
+
+dependencies: []

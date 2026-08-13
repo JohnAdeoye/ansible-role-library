@@ -1,0 +1,31 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Install openssl for the test certificate
+      ansible.builtin.package:
+        name: openssl
+        state: present
+
+    - name: Create the TLS directory
+      ansible.builtin.file:
+        path: /etc/nginx/ssl
+        state: directory
+        mode: "0750"
+
+    # A real certificate is out of scope for a container test; a self-signed one
+    # is enough to prove the TLS server block is syntactically valid and loads.
+    - name: Generate a self-signed certificate
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /etc/nginx/ssl/test.key
+          -out /etc/nginx/ssl/test.crt
+          -days 1 -subj "/CN=test.molecule.local"
+        creates: /etc/nginx/ssl/test.crt

@@ -1,0 +1,60 @@
+---
+# The gate. Failing here, with max_fail_percentage: 0 on the play, is what stops
+# a bad patch from rolling on to the rest of the fleet.
+
+# noqa command-instead-of-module — these are queries, not state changes. The
+# systemd module can start/stop units but cannot report overall system state or
+# enumerate failed units, which is exactly what the health gate needs.
+- name: Wait for the system to finish booting  # noqa command-instead-of-module
+  ansible.builtin.command:
+    cmd: systemctl is-system-running --wait
+  register: patch_orchestration_systemd_state
+  changed_when: false
+  # "degraded" means some unit failed. That is a real signal, but a single failed
+  # unrelated unit should not necessarily abort the rollout, so it is reported
+  # and only the required services below are treated as fatal.
+  failed_when: false
+  when: not (patch_orchestration_in_container | default(false)) | bool
+
+- name: Report the systemd state
+  ansible.builtin.debug:
+    msg: "systemd reports: {{ patch_orchestration_systemd_state.stdout | default('n/a') }}"
+
+- name: List failed units  # noqa command-instead-of-module
+  ansible.builtin.command:
+    cmd: systemctl list-units --state=failed --no-legend --no-pager
+  register: patch_orchestration_failed_units
+  changed_when: false
+  failed_when: false
+  when: not (patch_orchestration_in_container | default(false)) | bool
+
+- name: Report failed units
+  ansible.builtin.debug:
+    msg: "Failed units after patching: {{ patch_orchestration_failed_units.stdout_lines | default([]) }}"
+  when: patch_orchestration_failed_units.stdout_lines | default([]) | length > 0
+
+- name: Re-read service state
+  ansible.builtin.service_facts:
+  when: patch_orchestration_health_services | length > 0
+
+- name: Assert required services came back
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts.services[item + '.service'].state | default('unknown')) == 'running'
+    fail_msg: >-
+      {{ item }} is not running after patching {{ inventory_hostname }}.
+      Halting the rollout.
+    quiet: true
+  loop: "{{ patch_orchestration_health_services }}"
+
+- name: Probe the health endpoint
+  ansible.builtin.uri:
+    url: "{{ patch_orchestration_health_url }}"
+    status_code: "{{ patch_orchestration_health_url_status }}"
+    validate_certs: false
+    timeout: 10
+  register: patch_orchestration_health_probe
+  retries: "{{ patch_orchestration_health_retries }}"
+  delay: "{{ patch_orchestration_health_delay }}"
+  until: patch_orchestration_health_probe is succeeded
+  when: patch_orchestration_health_url | length > 0

@@ -1,0 +1,15 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# CIS Level 1 kernel parameters — managed by the base_hardening role.
+# Loaded from /etc/sysctl.d/, which overrides /etc/sysctl.conf.
+
+{% for key, value in base_hardening_sysctl | dictsort %}
+{{ key }} = {{ value }}
+{% endfor %}
+{% if base_hardening_ipv6_enabled %}
+
+# IPv6 is enabled on this host, so the v6 stack gets the same treatment as v4.
+{% for key, value in base_hardening_sysctl_ipv6 | dictsort %}
+{{ key }} = {{ value }}
+{% endfor %}
+{% endif %}

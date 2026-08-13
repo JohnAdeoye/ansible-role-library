@@ -1,0 +1,4 @@
+---
+# apt-get check reads the dpkg database and takes the same lock a real
+# transaction would, so it fails if unattended-upgrades is mid-run.
+patch_orchestration_lock_check_cmd: "apt-get check"

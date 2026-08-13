@@ -1,0 +1,81 @@
+---
+# CIS 5.2 — SSH server configuration.
+
+- name: Ensure the SSH server package is installed
+  ansible.builtin.package:
+    name: "{{ base_hardening_ssh_package }}"
+    state: present
+
+- name: Deploy hardened sshd_config
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    # `sshd -t -f %s` parses the candidate file and exits non-zero on error.
+    # Ansible discards the change if this fails, so a typo can never reach disk.
+    validate: "{{ base_hardening_sshd_binary }} -t -f %s"
+  notify: Reload sshd
+
+# RHEL 9 and Ubuntu 22.04 both ship an Include directive for a drop-in directory.
+# Anything left there silently overrides our file, which defeats the whole role.
+- name: Find pre-existing sshd_config.d drop-ins
+  ansible.builtin.find:
+    paths: /etc/ssh/sshd_config.d
+    patterns: "*.conf"
+  register: base_hardening_sshd_dropins
+  changed_when: false
+  failed_when: false
+
+- name: Report drop-ins that may override the hardened config
+  ansible.builtin.debug:
+    msg: >-
+      {{ base_hardening_sshd_dropins.files | map(attribute='path') | list }}
+      exist in /etc/ssh/sshd_config.d and are Included by sshd_config.
+      Review them — directives there take precedence over the first-match-wins
+      values this role sets.
+  when:
+    - base_hardening_sshd_dropins.matched | default(0) | int > 0
+
+# CIS 5.2.1/5.2.2 — host key permissions. Modern OpenSSH on RHEL 9 ships keys owned
+# by root:ssh_keys mode 0640; Ubuntu uses root:root 0600. The correct pair comes from
+# vars/<os_family>.yml rather than being hardcoded here.
+- name: Locate SSH host private keys
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: "ssh_host_*_key"
+  register: base_hardening_ssh_host_keys
+  changed_when: false
+
+- name: Locate SSH host public keys
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: "ssh_host_*_key.pub"
+  register: base_hardening_ssh_pub_keys
+  changed_when: false
+
+- name: Enforce ownership and permissions on SSH host private keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: "{{ base_hardening_ssh_keys_group }}"
+    mode: "{{ base_hardening_ssh_keys_mode }}"
+  loop: "{{ base_hardening_ssh_host_keys.files | map(attribute='path') | list }}"
+  when: base_hardening_ssh_host_keys.matched | default(0) | int > 0
+
+- name: Enforce permissions on SSH host public keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ base_hardening_ssh_pub_keys.files | map(attribute='path') | list }}"
+  when: base_hardening_ssh_pub_keys.matched | default(0) | int > 0
+
+- name: Ensure sshd is enabled and running
+  ansible.builtin.service:
+    name: "{{ base_hardening_ssh_service }}"
+    state: started
+    enabled: true
+  when: not base_hardening_in_container | bool

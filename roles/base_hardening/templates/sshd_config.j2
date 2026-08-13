@@ -1,0 +1,70 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Managed by the base_hardening Ansible role — local edits will be overwritten.
+
+Port {{ base_hardening_ssh_port }}
+AddressFamily {{ 'any' if base_hardening_ipv6_enabled else 'inet' }}
+Protocol 2
+
+# --- Host keys -------------------------------------------------------------
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+
+# --- Cryptography (5.2.13 - 5.2.15) ---------------------------------------
+Ciphers {{ base_hardening_ssh_ciphers | join(',') }}
+MACs {{ base_hardening_ssh_macs | join(',') }}
+KexAlgorithms {{ base_hardening_ssh_kex_algorithms | join(',') }}
+
+# --- Authentication (5.2.7 - 5.2.11) --------------------------------------
+PermitRootLogin {{ base_hardening_ssh_permit_root_login }}
+PasswordAuthentication {{ base_hardening_ssh_password_authentication }}
+PermitEmptyPasswords {{ base_hardening_ssh_permit_empty_passwords }}
+PubkeyAuthentication yes
+HostbasedAuthentication no
+IgnoreRhosts yes
+ChallengeResponseAuthentication no
+KerberosAuthentication no
+GSSAPIAuthentication no
+UsePAM {{ base_hardening_ssh_use_pam }}
+MaxAuthTries {{ base_hardening_ssh_max_auth_tries }}
+LoginGraceTime {{ base_hardening_ssh_login_grace_time }}
+StrictModes yes
+
+# --- Access control (5.2.4) -----------------------------------------------
+{% if base_hardening_ssh_allow_groups | length > 0 %}
+AllowGroups {{ base_hardening_ssh_allow_groups | join(' ') }}
+{% else %}
+# No AllowGroups set. CIS 5.2.4 wants an explicit allow-list; set
+# base_hardening_ssh_allow_groups once you have confirmed the group exists and
+# contains your administrative users, or you will lock yourself out.
+{% endif %}
+{% if base_hardening_ssh_deny_users | length > 0 %}
+DenyUsers {{ base_hardening_ssh_deny_users | join(' ') }}
+{% endif %}
+
+# --- Session control (5.2.16 - 5.2.19) ------------------------------------
+ClientAliveInterval {{ base_hardening_ssh_client_alive_interval }}
+ClientAliveCountMax {{ base_hardening_ssh_client_alive_count_max }}
+MaxSessions {{ base_hardening_ssh_max_sessions }}
+MaxStartups {{ base_hardening_ssh_max_startups }}
+TCPKeepAlive no
+Compression no
+
+# --- Forwarding ------------------------------------------------------------
+X11Forwarding {{ base_hardening_ssh_x11_forwarding }}
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitUserEnvironment no
+PermitTunnel no
+
+# --- Logging (5.2.5) -------------------------------------------------------
+SyslogFacility AUTHPRIV
+LogLevel {{ base_hardening_ssh_log_level }}
+
+# --- Banner (5.2.20) -------------------------------------------------------
+Banner /etc/issue.net
+PrintMotd no
+PrintLastLog yes
+
+Subsystem sftp {{ base_hardening_ssh_sftp_server }}

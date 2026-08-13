@@ -1,0 +1,79 @@
+---
+# Provision or update a single account. Included per user with loop_var: user.
+
+- name: "Create or update {{ user.name }}"
+  ansible.builtin.user:
+    name: "{{ user.name }}"
+    comment: "{{ user.comment | default(omit) }}"
+    uid: "{{ user.uid | default(omit) }}"
+    group: "{{ user.group | default(omit) }}"
+    groups: "{{ user.groups | default(user_lifecycle_default_groups) }}"
+    append: false          # declarative: the listed groups are the whole set
+    shell: "{{ user.shell | default(user_lifecycle_default_shell) }}"
+    home: "{{ user.home | default(omit) }}"
+    create_home: "{{ user.create_home | default(user_lifecycle_create_home) }}"
+    password: "{{ user.password | default(omit) }}"
+    # Without this, an account created with no password has a blank hash, which
+    # some PAM stacks treat as "no password required".
+    password_lock: "{{ user.password is not defined and user_lifecycle_password_lock_on_create }}"
+    expires: "{{ user.expires | default(omit) }}"
+    state: present
+    # Re-enable an account that was previously offboarded.
+    update_password: "{{ 'always' if user.password is defined else 'on_create' }}"
+  register: user_lifecycle_created
+
+- name: "Set home directory permissions for {{ user.name }}"
+  ansible.builtin.file:
+    path: "{{ user_lifecycle_created.home }}"
+    owner: "{{ user.name }}"
+    group: "{{ user.group | default(user.name) }}"
+    mode: "{{ user.home_mode | default(user_lifecycle_home_mode) }}"
+    state: directory
+  when:
+    - user_lifecycle_created.home is defined
+    - user.create_home | default(user_lifecycle_create_home)
+
+- name: "Clear any expiry left over from a previous offboarding for {{ user.name }}"
+  ansible.builtin.command:
+    cmd: "chage -E -1 {{ user.name }}"
+  register: user_lifecycle_chage
+  changed_when: false
+  when: user.expires is not defined
+
+- name: "Install SSH authorized keys for {{ user.name }}"
+  ansible.posix.authorized_key:
+    user: "{{ user.name }}"
+    key: "{{ user.ssh_keys | join('\n') }}"
+    # Removes keys that are not in the list. This is what makes key revocation
+    # actually work — without it, a removed key stays on every host forever.
+    exclusive: "{{ user_lifecycle_exclusive_keys }}"
+    state: present
+  when: user.ssh_keys | default([]) | length > 0
+
+- name: "Remove the authorized_keys file when no keys are declared for {{ user.name }}"
+  ansible.builtin.file:
+    path: "{{ user_lifecycle_created.home }}/.ssh/authorized_keys"
+    state: absent
+  when:
+    - user.ssh_keys is defined
+    - user.ssh_keys | length == 0
+    - user_lifecycle_exclusive_keys | bool
+    - user_lifecycle_created.home is defined
+
+- name: "Grant sudo rights to {{ user.name }}"
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "{{ user_lifecycle_sudoers_dir }}/{{ user_lifecycle_sudoers_prefix }}{{ user.name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    # visudo -cf rejects a malformed file. Without this a typo in a sudoers
+    # drop-in breaks sudo for everyone on the host.
+    validate: "visudo -cf %s"
+  when: user.sudo is defined and user.sudo
+
+- name: "Remove sudo rights from {{ user.name }}"
+  ansible.builtin.file:
+    path: "{{ user_lifecycle_sudoers_dir }}/{{ user_lifecycle_sudoers_prefix }}{{ user.name }}"
+    state: absent
+  when: user.sudo is not defined or not user.sudo

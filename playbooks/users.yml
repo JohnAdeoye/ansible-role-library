@@ -1,0 +1,6 @@
+---
+- name: Reconcile accounts against the declared list
+  hosts: "{{ target | default('all') }}"
+  become: true
+  roles:
+    - role: user_lifecycle

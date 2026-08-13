@@ -1,0 +1,112 @@
+---
+argument_specs:
+  main:
+    short_description: Declarative user, group, sudo and SSH key management
+    description:
+      - Manages accounts as a declarative list.
+      - Supports a three-stage lifecycle - present, offboarded and absent - where
+        offboarded revokes access and archives data without destroying ownership.
+    options:
+      user_lifecycle_users:
+        type: list
+        elements: dict
+        default: []
+        description: [Accounts to manage.]
+        options:
+          name:
+            type: str
+            required: true
+            description: [Login name.]
+          state:
+            type: str
+            default: present
+            choices: [present, offboarded, absent]
+            description:
+              - present creates or updates the account.
+              - offboarded revokes access, kills sessions and archives the home directory.
+              - absent deletes the account outright.
+          comment: {type: str, description: [GECOS field.]}
+          uid: {type: int, description: [Numeric UID. Pin it for consistency across hosts.]}
+          group: {type: str, description: [Primary group. Defaults to a user-private group.]}
+          groups:
+            type: list
+            elements: str
+            description: [Secondary groups. This is the complete set - membership is not additive.]
+          shell: {type: str, description: [Login shell.]}
+          home: {type: str, description: [Home directory path.]}
+          home_mode: {type: str, description: [Home directory mode.]}
+          create_home: {type: bool, description: [Whether to create a home directory.]}
+          password:
+            type: str
+            description:
+              - Crypt hash, never plaintext. Generate with `mkpasswd --method=yescrypt`.
+          expires: {type: float, description: [Account expiry as a UNIX timestamp.]}
+          ssh_keys:
+            type: list
+            elements: str
+            description:
+              - Authorized public keys. With user_lifecycle_exclusive_keys enabled,
+                any key not in this list is removed from the host.
+          sudo:
+            type: raw
+            description:
+              - false for none, 'full' for ALL=(ALL:ALL) ALL, 'nopasswd' for
+                passwordless, or a list of permitted commands.
+          sudo_nopasswd:
+            type: bool
+            default: false
+            description: [With a command list, allow those commands without a password.]
+          remove_home:
+            type: bool
+            default: true
+            description: [For state absent, whether to delete the home directory.]
+
+      user_lifecycle_groups:
+        type: list
+        elements: dict
+        default: []
+        description: [Groups to manage.]
+        options:
+          name: {type: str, required: true, description: [Group name.]}
+          gid: {type: int, description: [Numeric GID.]}
+          system: {type: bool, default: false, description: [Create as a system group.]}
+          state: {type: str, default: present, choices: [present, absent], description: [Group state.]}
+
+      user_lifecycle_exclusive_keys:
+        type: bool
+        default: true
+        description:
+          - Remove authorized keys that are not declared. Required for key
+            revocation to actually take effect.
+
+      user_lifecycle_offboard_archive:
+        type: bool
+        default: true
+        description: [Tar the home directory into user_lifecycle_offboard_archive_dir.]
+
+      user_lifecycle_offboard_archive_dir:
+        type: str
+        default: /var/archive/users
+        description: [Where offboarding archives are written. Root-only, mode 0700.]
+
+      user_lifecycle_offboard_remove_home:
+        type: bool
+        default: false
+        description: [Delete the home directory after archiving. Ignored if archiving is off.]
+
+      user_lifecycle_offboard_remove_account:
+        type: bool
+        default: false
+        description:
+          - Delete the account entirely after offboarding. Off by default so that
+            file ownership and the audit trail stay intact.
+
+      user_lifecycle_offboard_kill_processes:
+        type: bool
+        default: true
+        description: [SIGTERM anything still running as the user, including live SSH sessions.]
+
+      user_lifecycle_default_shell: {type: str, default: /bin/bash, description: [Shell when none is specified.]}
+      user_lifecycle_home_mode: {type: str, default: "0750", description: [Default home directory mode.]}
+      user_lifecycle_sudoers_dir: {type: str, default: /etc/sudoers.d, description: [Where sudo drop-ins are written.]}
+      user_lifecycle_sudoers_prefix: {type: str, default: "90-ansible-", description: [Filename prefix for managed sudo drop-ins.]}

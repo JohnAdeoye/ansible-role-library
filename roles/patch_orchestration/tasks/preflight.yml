@@ -1,0 +1,67 @@
+---
+# Refuse to start on a host that is already unhealthy or short of disk.
+# Everything here is a read-only check; nothing is modified.
+
+- name: Check free disk space on critical mount points
+  ansible.builtin.set_fact:
+    patch_orchestration_space_failures: >-
+      {%- set out = [] -%}
+      {%- for mount, required_mb in patch_orchestration_min_free_mb.items() -%}
+      {%-   set m = ansible_mounts | selectattr('mount', 'equalto', mount) | list -%}
+      {%-   if m | length > 0 -%}
+      {%-     set free_mb = (m[0].size_available / 1048576) | round | int -%}
+      {%-     if free_mb < required_mb | int -%}
+      {{ out.append(mount ~ ' has ' ~ free_mb ~ 'MB free, needs ' ~ required_mb ~ 'MB') or '' }}
+      {%-     endif -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Fail if any mount point is short of space
+  ansible.builtin.assert:
+    that: [patch_orchestration_space_failures | length == 0]
+    fail_msg: >-
+      Pre-flight failed on {{ inventory_hostname }}: {{ patch_orchestration_space_failures | join('; ') }}.
+      A full /boot in particular will leave a kernel update half-applied.
+    quiet: true
+
+- name: Gather service state
+  ansible.builtin.service_facts:
+  when: patch_orchestration_required_services | length > 0
+
+- name: Fail if a required service is not already running
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts.services[item + '.service'].state | default('unknown')) == 'running'
+    fail_msg: >-
+      {{ item }} is not running before patching started. Fix the host first —
+      patching a broken host makes the postmortem much harder.
+    quiet: true
+  loop: "{{ patch_orchestration_required_services }}"
+
+- name: Check for a pending reboot from a previous run
+  ansible.builtin.include_tasks: reboot-check.yml
+
+- name: Fail if a reboot is already pending
+  ansible.builtin.assert:
+    that: [not patch_orchestration_reboot_required | bool]
+    fail_msg: >-
+      {{ inventory_hostname }} is already pending a reboot from an earlier change.
+      Reboot it before patching, or set patch_orchestration_fail_if_reboot_pending=false.
+    quiet: true
+  when: patch_orchestration_fail_if_reboot_pending | bool
+
+- name: Verify the package manager is not already locked
+  ansible.builtin.command:
+    cmd: "{{ patch_orchestration_lock_check_cmd }}"
+  register: patch_orchestration_lock_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if another package transaction is in progress
+  ansible.builtin.assert:
+    that: [patch_orchestration_lock_check.rc == 0]
+    fail_msg: >-
+      Another package manager transaction is running on {{ inventory_hostname }}
+      (unattended-upgrades or a stray dnf). Wait for it to finish.
+    quiet: true

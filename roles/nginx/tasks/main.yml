@@ -1,0 +1,171 @@
+---
+- name: Load OS-family specific variables
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_os_family }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+  tags: [always]
+
+- name: Detect containerised target
+  ansible.builtin.set_fact:
+    nginx_in_container: "{{ ansible_virtualization_type in ['docker', 'container', 'containerd', 'podman'] }}"
+  tags: [always]
+
+- name: Remove NGINX
+  when: nginx_state == 'absent'
+  tags: [nginx]
+  block:
+    - name: Stop and disable NGINX
+      ansible.builtin.service:
+        name: nginx
+        state: stopped
+        enabled: false
+      when: not nginx_in_container | bool
+      failed_when: false
+
+    - name: Uninstall the NGINX package
+      ansible.builtin.package:
+        name: nginx
+        state: absent
+
+- name: Install and configure NGINX
+  when: nginx_state == 'present'
+  tags: [nginx]
+  block:
+    - name: Install NGINX
+      ansible.builtin.package:
+        name: "{{ nginx_packages }}"
+        state: present
+
+    - name: Ensure the vhost directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - "{{ nginx_conf_dir }}/sites-available"
+        - "{{ nginx_conf_dir }}/sites-enabled"
+        - "{{ nginx_conf_dir }}/conf.d"
+        - "{{ nginx_conf_dir }}/snippets"
+
+    # Shared snippets are included by every server block, so a header or TLS
+    # change lands in one file instead of being duplicated per site.
+    - name: Deploy configuration snippets
+      ansible.builtin.template:
+        src: "snippets/{{ item }}.conf.j2"
+        dest: "{{ nginx_conf_dir }}/snippets/{{ item }}.conf"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - security-headers
+        - tls-params
+        - proxy-params
+      notify: Reload nginx
+
+    - name: Deploy the main nginx.conf
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: "{{ nginx_conf_dir }}/nginx.conf"
+        owner: root
+        group: root
+        mode: "0644"
+        # `nginx -t` parses the whole tree, so this catches a broken include too.
+        validate: "nginx -t -c %s"
+      notify: Reload nginx
+
+    - name: Remove the distribution default site
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ nginx_default_site_paths }}"
+      when: nginx_remove_default_site | bool
+      notify: Reload nginx
+
+    - name: Render site configurations
+      ansible.builtin.template:
+        src: site.conf.j2
+        dest: "{{ nginx_conf_dir }}/sites-available/{{ item.name }}.conf"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ nginx_sites }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.server_name }})"
+      notify: Reload nginx
+
+    - name: Enable sites
+      ansible.builtin.file:
+        src: "{{ nginx_conf_dir }}/sites-available/{{ item.name }}.conf"
+        dest: "{{ nginx_conf_dir }}/sites-enabled/{{ item.name }}.conf"
+        state: link
+        owner: root
+        group: root
+      loop: "{{ nginx_sites }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.enabled | default(true)
+      notify: Reload nginx
+
+    - name: Build the list of site names that should be enabled
+      ansible.builtin.set_fact:
+        nginx_expected_enabled: >-
+          {{ nginx_sites | selectattr('enabled', 'defined') | selectattr('enabled') | map(attribute='name') | list
+             + nginx_sites | rejectattr('enabled', 'defined') | map(attribute='name') | list }}
+
+    - name: Find currently enabled sites
+      ansible.builtin.find:
+        paths: "{{ nginx_conf_dir }}/sites-enabled"
+        patterns: "*.conf"
+        file_type: any
+      register: nginx_enabled_files
+
+    # Without this, removing a site from nginx_sites — or setting enabled: false —
+    # leaves it serving traffic. The classic "why is the old vhost still up" bug.
+    - name: Disable sites that are no longer declared or are explicitly disabled
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ nginx_enabled_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: (item.path | basename | splitext | first) not in nginx_expected_enabled
+      notify: Reload nginx
+
+    - name: Configure log rotation
+      ansible.builtin.template:
+        src: logrotate.j2
+        dest: /etc/logrotate.d/nginx
+        owner: root
+        group: root
+        mode: "0644"
+      when: nginx_logrotate_enabled | bool
+
+    - name: Allow NGINX to make outbound connections (SELinux)
+      ansible.posix.seboolean:
+        name: httpd_can_network_connect
+        state: true
+        persistent: true
+      when:
+        - ansible_os_family == 'RedHat'
+        - ansible_selinux.status | default('disabled') == 'enabled'
+        - nginx_sites | selectattr('locations', 'defined') | map(attribute='locations')
+          | flatten | selectattr('proxy_pass', 'defined') | list | length > 0
+
+    - name: Validate the full configuration
+      ansible.builtin.command:
+        cmd: nginx -t
+      register: nginx_config_test
+      changed_when: false
+
+    - name: Ensure NGINX is running and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: "{{ nginx_service_enabled }}"
+      when: not nginx_in_container | bool

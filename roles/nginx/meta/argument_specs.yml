@@ -1,0 +1,121 @@
+---
+argument_specs:
+  main:
+    short_description: NGINX with templated vhosts, TLS and rate limiting
+    options:
+      nginx_state:
+        type: str
+        default: present
+        choices: [present, absent]
+        description: [Whether NGINX should be installed or removed.]
+
+      nginx_worker_processes:
+        type: str
+        default: auto
+        description: ["Number of worker processes, or 'auto' for one per core."]
+
+      nginx_worker_connections: {type: int, default: 1024, description: [Connections per worker.]}
+      nginx_client_max_body_size: {type: str, default: 16m, description: [Maximum request body size.]}
+
+      nginx_ssl_protocols:
+        type: str
+        default: "TLSv1.2 TLSv1.3"
+        description: [Space-separated list of enabled TLS versions.]
+
+      nginx_hsts_enabled:
+        type: bool
+        default: false
+        description:
+          - Send Strict-Transport-Security. Effectively irreversible for the
+            duration of max-age once a browser has seen it.
+
+      nginx_security_headers:
+        type: dict
+        description: [Response headers added to every site.]
+
+      nginx_rate_limit_zones:
+        type: list
+        elements: dict
+        description: [limit_req_zone definitions, referenced by name from a location.]
+        options:
+          name: {type: str, required: true, description: [Zone name.]}
+          key: {type: str, required: true, description: ["Key variable, e.g. $binary_remote_addr."]}
+          size: {type: str, required: true, description: ["Shared memory size, e.g. 10m."]}
+          rate: {type: str, required: true, description: ["Rate, e.g. 30r/s."]}
+
+      nginx_status_enabled:
+        type: bool
+        default: true
+        description: [Expose stub_status on loopback for the Prometheus exporter.]
+
+      nginx_sites:
+        type: list
+        elements: dict
+        default: []
+        description: [Server blocks to render. One entry per vhost.]
+        options:
+          name:
+            type: str
+            required: true
+            description: [Short identifier; becomes the config file name.]
+          server_name:
+            type: str
+            required: true
+            description: [Value of the server_name directive.]
+          enabled:
+            type: bool
+            default: true
+            description: [False renders the file but does not link it into sites-enabled.]
+          listen:
+            type: int
+            default: 80
+            description: [Port to listen on. Combine with tls for HTTPS.]
+          root: {type: str, description: [Document root for static content.]}
+          index: {type: str, default: index.html, description: [Index file.]}
+          redirect_http:
+            type: bool
+            default: true
+            description: [With tls set, also emit a :80 block that 301s to HTTPS.]
+          tls:
+            type: dict
+            description: [TLS material. Presence of this key enables HTTPS.]
+            options:
+              cert: {type: str, required: true, description: [Path to the certificate chain.]}
+              key: {type: str, required: true, description: [Path to the private key.]}
+              trusted_cert: {type: str, description: [CA bundle for OCSP stapling verification.]}
+          headers:
+            type: dict
+            description: [Extra response headers for this site only.]
+          locations:
+            type: list
+            elements: dict
+            description: [Location blocks.]
+            options:
+              path: {type: str, required: true, description: ["URI, e.g. / or /api."]}
+              match: {type: str, description: ["Modifier, e.g. '=' or '~*' or '^~'."]}
+              proxy_pass: {type: str, description: [Upstream URL.]}
+              return: {type: str, description: ["Literal return directive, e.g. '204'."]}
+              alias: {type: str, description: [Filesystem alias.]}
+              try_files: {type: str, description: [try_files argument string.]}
+              rate_limit: {type: str, description: [Name of a zone from nginx_rate_limit_zones.]}
+              burst: {type: int, description: [Burst allowance for the rate limit.]}
+              conn_limit: {type: str, description: [Name of a connection limit zone.]}
+              conn_limit_count: {type: int, default: 10, description: [Concurrent connections allowed.]}
+              websocket: {type: bool, default: false, description: [Emit WebSocket upgrade headers.]}
+              expires: {type: str, description: [Cache expiry, e.g. 30d.]}
+              allow: {type: list, elements: str, description: [CIDRs permitted; everything else denied.]}
+              proxy_read_timeout: {type: str, description: [Per-location read timeout.]}
+              basic_auth:
+                type: dict
+                description: [HTTP basic authentication.]
+                options:
+                  user_file: {type: str, required: true, description: [Path to the htpasswd file.]}
+                  realm: {type: str, default: Restricted, description: [Realm string.]}
+              extra:
+                type: list
+                elements: str
+                description: [Raw directives appended to the location, without trailing semicolons.]
+          extra:
+            type: list
+            elements: str
+            description: [Raw directives appended to the server block.]

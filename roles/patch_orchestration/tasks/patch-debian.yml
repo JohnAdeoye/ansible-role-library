@@ -1,0 +1,48 @@
+---
+# Ubuntu 22.04 / Debian.
+
+- name: Refresh the apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 300
+
+# Held packages are honoured by apt automatically; patch_orchestration_exclude is applied by
+# marking holds for the duration of the run and releasing them afterwards.
+- name: Hold excluded packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ patch_orchestration_exclude }}"
+
+- name: Apply all available updates
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+  register: patch_orchestration_apt_all
+  when: patch_orchestration_scope == 'all'
+
+# apt has no native --security flag. The supported route is to restrict the
+# candidate set to the security pocket, which is what unattended-upgrades does.
+- name: Apply security updates only
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      apt-get -s dist-upgrade
+      | grep '^Inst'
+      | grep -Ei '{{ ansible_distribution_release }}-security'
+      | awk '{print $2}'
+      | xargs -r apt-get install -y --only-upgrade
+    executable: /bin/bash
+  register: patch_orchestration_apt_security
+  changed_when: "'Setting up' in patch_orchestration_apt_security.stdout"
+  when: patch_orchestration_scope in ['security', 'minimal']
+
+- name: Release holds on excluded packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop: "{{ patch_orchestration_exclude }}"
+
+- name: Consolidate the patch result
+  ansible.builtin.set_fact:
+    patch_orchestration_result: "{{ patch_orchestration_apt_all if patch_orchestration_scope == 'all' else patch_orchestration_apt_security }}"

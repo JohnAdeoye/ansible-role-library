@@ -1,0 +1,63 @@
+---
+- name: Load OS-family specific variables
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files: ["{{ ansible_os_family }}.yml"]
+      paths: ["{{ role_path }}/vars"]
+  tags: [always]
+
+- name: Record the start time and detect a containerised target
+  ansible.builtin.set_fact:
+    patch_orchestration_started_at: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(ansible_date_time.epoch | int) }}"
+    patch_orchestration_in_container: "{{ ansible_virtualization_type in ['docker', 'container', 'containerd', 'podman'] }}"
+  tags: [always]
+
+- name: Pre-flight checks
+  ansible.builtin.include_tasks: preflight.yml
+  when: patch_orchestration_preflight_enabled | bool
+  tags: [preflight]
+
+- name: Take a pre-patch snapshot
+  ansible.builtin.include_tasks: snapshot.yml
+  when:
+    - patch_orchestration_snapshot_enabled | bool
+    - patch_orchestration_snapshot_command | length > 0
+  tags: [snapshot]
+
+- name: Capture the package inventory before patching
+  ansible.builtin.package_facts:
+    manager: auto
+  tags: [patch]
+
+# set_fact snapshots the value now; the second package_facts run in report.yml
+# overwrites ansible_facts.packages but leaves this copy intact.
+- name: Remember the pre-patch package versions
+  ansible.builtin.set_fact:
+    patch_orchestration_packages_before: "{{ ansible_facts.packages }}"
+  tags: [patch]
+
+- name: Apply updates
+  ansible.builtin.include_tasks: "patch-{{ ansible_os_family | lower }}.yml"
+  tags: [patch]
+
+- name: Determine whether a reboot is required
+  ansible.builtin.include_tasks: reboot-check.yml
+  tags: [reboot]
+
+- name: Reboot the host
+  ansible.builtin.include_tasks: reboot.yml
+  when: >-
+    patch_orchestration_reboot == 'always'
+    or (patch_orchestration_reboot == 'when-needed' and patch_orchestration_reboot_required | bool)
+  tags: [reboot]
+
+- name: Verify the host is healthy
+  ansible.builtin.include_tasks: health.yml
+  when: patch_orchestration_health_enabled | bool
+  tags: [health]
+
+- name: Write the patch report
+  ansible.builtin.include_tasks: report.yml
+  when: patch_orchestration_report_enabled | bool
+  tags: [report]

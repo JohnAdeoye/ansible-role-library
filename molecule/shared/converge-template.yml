@@ -1,0 +1,12 @@
+---
+# Reference converge used as the starting point for each role's scenario.
+# Roles copy this and add their own vars; it is kept here so the pattern is
+# documented in one place rather than duplicated by accident.
+
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Include the role under test
+      ansible.builtin.include_role:
+        name: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') | basename }}"

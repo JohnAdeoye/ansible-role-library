@@ -1,0 +1,115 @@
+---
+# Offboard a single account. Order matters: revoke access first, archive second,
+# delete last. Doing it the other way round means a departing user can still log
+# in while their home directory is being tarred.
+
+- name: "Look up the existing account for {{ user.name }}"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ user.name }}"
+    fail_key: false
+
+- name: "Report that no account exists on this host for {{ user.name }}"
+  ansible.builtin.debug:
+    msg: "{{ user.name }} is already gone from this host; nothing to offboard."
+  when: ansible_facts.getent_passwd[user.name] is not defined
+
+- name: "Offboard {{ user.name }}"
+  when: ansible_facts.getent_passwd[user.name] is defined
+  block:
+    - name: "Resolve the home directory for {{ user.name }}"
+      ansible.builtin.set_fact:
+        user_lifecycle_home: "{{ ansible_facts.getent_passwd[user.name][4] }}"
+
+    # 1. No new password logins.
+    - name: "Lock the password for {{ user.name }}"
+      ansible.builtin.user:
+        name: "{{ user.name }}"
+        password_lock: true
+        shell: "{{ user_lifecycle_offboard_shell }}"
+        state: present
+
+    # 2. Expire the account outright. A locked password alone still allows
+    #    key-based and PAM-delegated logins on some configurations.
+    - name: "Expire the account for {{ user.name }}"
+      ansible.builtin.command:
+        cmd: "chage -E 0 {{ user.name }}"
+      register: user_lifecycle_expire
+      changed_when: user_lifecycle_expire.rc == 0
+
+    # 3. No key-based logins.
+    - name: "Remove SSH authorized keys for {{ user.name }}"
+      ansible.builtin.file:
+        path: "{{ user_lifecycle_home }}/.ssh/authorized_keys"
+        state: absent
+
+    # 4. No privilege escalation.
+    - name: "Remove sudo rights from {{ user.name }}"
+      ansible.builtin.file:
+        path: "{{ user_lifecycle_sudoers_dir }}/{{ user_lifecycle_sudoers_prefix }}{{ user.name }}"
+        state: absent
+
+    - name: "Strip all secondary groups from {{ user.name }}"
+      ansible.builtin.user:
+        name: "{{ user.name }}"
+        groups: []
+        append: false
+        state: present
+
+    # 5. Terminate anything still running as them — an open SSH session survives
+    #    every step above.
+    - name: "Terminate running processes owned by {{ user.name }}"
+      ansible.builtin.command:
+        cmd: "pkill -TERM -u {{ user.name }}"
+      register: user_lifecycle_pkill
+      # pkill exits 1 when it matched nothing, which is the common case.
+      failed_when: user_lifecycle_pkill.rc not in [0, 1]
+      changed_when: user_lifecycle_pkill.rc == 0
+      when: user_lifecycle_offboard_kill_processes | bool
+
+    - name: "Archive the home directory of {{ user.name }}"
+      when:
+        - user_lifecycle_offboard_archive | bool
+        - user_lifecycle_home | length > 0
+      block:
+        - name: Ensure the archive directory exists
+          ansible.builtin.file:
+            path: "{{ user_lifecycle_offboard_archive_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: "Stat the home directory of {{ user.name }}"
+          ansible.builtin.stat:
+            path: "{{ user_lifecycle_home }}"
+          register: user_lifecycle_home_stat
+
+        - name: "Create the archive for {{ user.name }}"
+          community.general.archive:
+            path: "{{ user_lifecycle_home }}"
+            dest: "{{ user_lifecycle_offboard_archive_dir }}/{{ user.name }}-{{ ansible_date_time.date }}.tar.gz"
+            format: gz
+            owner: root
+            group: root
+            mode: "0600"
+            # Keeping the original is deliberate; removal is a separate,
+            # explicitly opted-in step below.
+            remove: false
+          when: user_lifecycle_home_stat.stat.exists
+
+    # 6. Only now, and only if asked.
+    - name: "Remove the home directory of {{ user.name }}"
+      ansible.builtin.file:
+        path: "{{ user_lifecycle_home }}"
+        state: absent
+      when:
+        - user_lifecycle_offboard_remove_home | bool
+        - user_lifecycle_offboard_archive | bool   # never delete without an archive
+
+    - name: "Remove the account for {{ user.name }}"
+      ansible.builtin.user:
+        name: "{{ user.name }}"
+        state: absent
+        remove: false      # home is handled above
+      when: user_lifecycle_offboard_remove_account | bool

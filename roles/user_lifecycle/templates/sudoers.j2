@@ -1,0 +1,13 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# sudo rights for {{ user.name }} — managed by the user_lifecycle role.
+{% if user.sudo == 'full' %}
+{{ user.name }} ALL=(ALL:ALL) ALL
+{% elif user.sudo == 'nopasswd' %}
+{{ user.name }} ALL=(ALL:ALL) NOPASSWD: ALL
+{% elif user.sudo is sequence and user.sudo is not string %}
+# Restricted to a specific command list.
+{{ user.name }} ALL=(ALL) {% if user.sudo_nopasswd | default(false) %}NOPASSWD: {% endif %}{{ user.sudo | join(', ') }}
+{% else %}
+{{ user.name }} ALL=(ALL:ALL) {{ user.sudo }}
+{% endif %}

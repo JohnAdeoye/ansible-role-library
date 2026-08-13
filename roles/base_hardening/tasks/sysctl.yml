@@ -1,0 +1,110 @@
+---
+# CIS 3.1-3.3 and 1.5 — kernel parameters.
+#
+# Written to a single drop-in rather than /etc/sysctl.conf so the baseline is
+# greppable, removable in one step, and does not fight the distro's own defaults file.
+
+- name: Deploy CIS sysctl baseline
+  ansible.builtin.template:
+    src: sysctl-cis.conf.j2
+    dest: /etc/sysctl.d/99-cis-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl
+  when: not base_hardening_in_container | bool
+
+# Applying live as well as on disk: a drop-in alone leaves the running kernel
+# unhardened until reboot. Containers share the host kernel, so this is skipped there.
+- name: Apply kernel parameters to the running system
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-cis-hardening.conf
+    reload: false          # the handler does one reload at the end
+    sysctl_set: true
+  loop: "{{ base_hardening_sysctl | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+  when:
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+
+- name: Apply IPv6 kernel parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-cis-hardening.conf
+    reload: false
+    sysctl_set: true
+  loop: "{{ base_hardening_sysctl_ipv6 | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+  when:
+    - not base_hardening_in_container | bool
+    - base_hardening_ipv6_enabled | bool
+    - base_hardening_enforce | bool
+
+- name: Disable IPv6 entirely at the kernel level
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-cis-disable-ipv6.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 3.1.1 — IPv6 disabled by policy.
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.ipv6.conf.default.disable_ipv6 = 1
+      net.ipv6.conf.lo.disable_ipv6 = 1
+  notify: Reload sysctl
+  when:
+    - not base_hardening_ipv6_enabled | bool
+    - not base_hardening_in_container | bool
+
+- name: Remove the IPv6-disable drop-in when IPv6 is enabled
+  ansible.builtin.file:
+    path: /etc/sysctl.d/99-cis-disable-ipv6.conf
+    state: absent
+  notify: Reload sysctl
+  when:
+    - base_hardening_ipv6_enabled | bool
+    - not base_hardening_in_container | bool
+
+# CIS 1.5.1 — core dumps. The sysctl above covers fs.suid_dumpable; limits.d
+# covers the ulimit side, and systemd needs telling separately because it has
+# its own coredump handler that ignores both.
+- name: Restrict core dumps via limits
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-cis-coredump.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 1.5.1 — core dumps disabled.
+      * hard core 0
+
+- name: Ensure the systemd coredump drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not base_hardening_in_container | bool
+
+- name: Disable systemd-coredump storage
+  ansible.builtin.copy:
+    dest: /etc/systemd/coredump.conf.d/99-cis.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      [Coredump]
+      Storage=none
+      ProcessSizeMax=0
+  when: not base_hardening_in_container | bool

@@ -1,0 +1,64 @@
+---
+# A per-host record of what actually changed, written back to the controller.
+# Without this, "we patched last Tuesday" is the only audit trail you have.
+
+- name: Capture the package inventory after patching
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Compute the set of changed packages
+  ansible.builtin.set_fact:
+    patch_orchestration_changed_packages: >-
+      {%- set out = [] -%}
+      {%- for name, versions in ansible_facts.packages.items() -%}
+      {%-   set after = versions[0].version ~ '-' ~ versions[0].release | default('') -%}
+      {%-   set before_entry = patch_orchestration_packages_before.get(name) -%}
+      {%-   if before_entry is none -%}
+      {{ out.append({'name': name, 'before': None, 'after': after}) or '' }}
+      {%-   else -%}
+      {%-     set before = before_entry[0].version ~ '-' ~ before_entry[0].release | default('') -%}
+      {%-     if before != after -%}
+      {{ out.append({'name': name, 'before': before, 'after': after}) or '' }}
+      {%-     endif -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Ensure the report directory exists on the controller
+  ansible.builtin.file:
+    path: "{{ patch_orchestration_report_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Write the per-host patch report
+  ansible.builtin.copy:
+    dest: "{{ patch_orchestration_report_dir }}/{{ inventory_hostname }}.json"
+    mode: "0644"
+    content: "{{ patch_orchestration_report_body | to_nice_json }}"
+  vars:
+    patch_orchestration_report_body:
+      host: "{{ inventory_hostname }}"
+      distribution: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+      kernel: "{{ ansible_kernel }}"
+      started_at: "{{ patch_orchestration_started_at }}"
+      scope: "{{ patch_orchestration_scope }}"
+      excluded: "{{ patch_orchestration_exclude }}"
+      reboot_required: "{{ patch_orchestration_reboot_required | default(false) }}"
+      rebooted: >-
+        {{ patch_orchestration_reboot == 'always'
+           or (patch_orchestration_reboot == 'when-needed'
+               and patch_orchestration_reboot_required | default(false)) }}
+      changed_package_count: "{{ patch_orchestration_changed_packages | length }}"
+      changed_packages: "{{ patch_orchestration_changed_packages }}"
+  delegate_to: localhost
+  become: false
+
+- name: Summarise
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: {{ patch_orchestration_changed_packages | length }} package(s) updated,
+      reboot_required={{ patch_orchestration_reboot_required | default(false) }}.
+      Report: {{ patch_orchestration_report_dir }}/{{ inventory_hostname }}.json

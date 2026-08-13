@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Apply the base_hardening role
+      ansible.builtin.include_role:
+        name: base_hardening
+      vars:
+        base_hardening_ssh_allow_groups: [wheel]
+        base_hardening_pwquality_minlen: 14
+        base_hardening_lockout_attempts: 5

@@ -1,0 +1,26 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# CIS 2.1 — time synchronisation.
+
+{% for server in base_hardening_ntp_servers %}
+server {{ server }} iburst
+{% endfor %}
+
+# Record the drift so the clock is right sooner after a reboot.
+driftfile /var/lib/chrony/drift
+
+# Allow a large one-off correction in the first three updates, then discipline
+# the clock gradually. Stepping later would jump timestamps in the audit log.
+makestep 1.0 3
+
+# Sync the RTC so the hardware clock is also correct.
+rtcsync
+
+# Run as an unprivileged user (CIS 2.1.2).
+user {{ base_hardening_chrony_user }}
+
+# This host is a client, not a server: serve time to nobody.
+port 0
+cmdport 0
+
+logdir /var/log/chrony

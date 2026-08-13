@@ -1,0 +1,23 @@
+---
+profile: production
+
+exclude_paths:
+  - .cache/
+  - .github/
+  - .venv/
+  - molecule/shared/
+  # Molecule scenarios are test code that happens to live under roles/. Linting
+  # them as role content means every local register in a verify playbook
+  # ("alice_keys", "leaver_shadow") trips var-naming[no-role-prefix], which would
+  # make the test files less readable to satisfy a rule aimed at role interfaces.
+  # They are still covered: yamllint runs over them, and `molecule test` runs a
+  # syntax stage before every converge.
+  - "roles/*/molecule/"
+
+# Roles here are consumed by path, not installed from Galaxy, so the namespace
+# convention that expects a "namespace.rolename" directory does not apply.
+skip_list:
+  - role-name
+
+warn_list:
+  - experimental

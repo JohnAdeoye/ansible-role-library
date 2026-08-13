@@ -1,0 +1,6 @@
+---
+- name: Apply the CIS Level 1 baseline
+  hosts: "{{ target | default('all') }}"
+  become: true
+  roles:
+    - role: base_hardening

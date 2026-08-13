@@ -1,0 +1,94 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Assert the configuration is valid
+      ansible.builtin.command:
+        cmd: nginx -t
+      changed_when: false
+
+    - name: Read the proxied site config
+      ansible.builtin.slurp:
+        src: /etc/nginx/sites-available/proxied.conf
+      register: proxied
+
+    - name: Assert TLS and rate limiting are configured
+      ansible.builtin.assert:
+        that:
+          - "'ssl_certificate /etc/nginx/ssl/test.crt' in (proxied.content | b64decode)"
+          - "'limit_req zone=general burst=20 nodelay' in (proxied.content | b64decode)"
+          - "'limit_req zone=login' in (proxied.content | b64decode)"
+          - "'proxy_set_header Connection $connection_upgrade' in (proxied.content | b64decode)"
+          - "'allow 10.0.0.0/8' in (proxied.content | b64decode)"
+        quiet: true
+
+    - name: Read the main config
+      ansible.builtin.slurp:
+        src: /etc/nginx/nginx.conf
+      register: mainconf
+
+    - name: Assert hardening directives in the main config
+      ansible.builtin.assert:
+        that:
+          - "'server_tokens off' in (mainconf.content | b64decode)"
+          - "'limit_req_zone $binary_remote_addr zone=general' in (mainconf.content | b64decode)"
+          - "'limit_req_status 429' in (mainconf.content | b64decode)"
+          - "'stub_status' in (mainconf.content | b64decode)"
+        quiet: true
+
+    - name: Assert the enabled sites are linked
+      ansible.builtin.stat:
+        path: "/etc/nginx/sites-enabled/{{ item }}.conf"
+      register: enabled
+      loop: [static, proxied]
+
+    - name: Check the symlinks exist
+      ansible.builtin.assert:
+        that: [item.stat.exists, item.stat.islnk]
+        quiet: true
+      loop: "{{ enabled.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Assert the disabled site is not linked
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/disabled-site.conf
+      register: disabled_site
+
+    - name: Check the disabled site is absent from sites-enabled
+      ansible.builtin.assert:
+        that: [not disabled_site.stat.exists]
+        fail_msg: "a site with enabled:false was linked into sites-enabled"
+        quiet: true
+
+    - name: Assert the default site was removed
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: default_site
+
+    - name: Check the default site is gone
+      ansible.builtin.assert:
+        that: [not default_site.stat.exists]
+        quiet: true
+
+    # An end-to-end request, not just a file-content check: this proves nginx
+    # actually started, bound the port and applied the header snippet at runtime.
+    # 404 is a fine outcome — the document root is deliberately empty.
+    - name: Fetch the static site over HTTP
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8081/
+        status_code: [200, 403, 404]
+        return_content: false
+      register: static_response
+      when: ansible_virtualization_type not in ['docker', 'container', 'containerd', 'podman']
+
+    # The uri module exposes response headers as snake_cased keys on the result.
+    - name: Assert security headers are present on the live response
+      ansible.builtin.assert:
+        that:
+          - static_response.x_content_type_options | default('') == 'nosniff'
+          - static_response.x_frame_options | default('') == 'SAMEORIGIN'
+        fail_msg: "security headers missing from the live response"
+        quiet: true
+      when: static_response.status is defined

@@ -1,0 +1,7 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Response headers applied to every site.
+
+{% for name, value in nginx_security_headers | dictsort %}
+add_header {{ name }} "{{ value }}" always;
+{% endfor %}

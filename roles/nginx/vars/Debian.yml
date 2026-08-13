@@ -1,0 +1,9 @@
+---
+nginx_packages: [nginx]
+nginx_user: www-data
+nginx_conf_dir: /etc/nginx
+nginx_pid_file: /run/nginx.pid
+# Debian/Ubuntu enable a "default" vhost via a symlink in sites-enabled.
+nginx_default_site_paths:
+  - /etc/nginx/sites-enabled/default
+  - /etc/nginx/sites-available/default

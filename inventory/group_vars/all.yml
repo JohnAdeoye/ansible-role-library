@@ -1,0 +1,11 @@
+---
+# Fleet-wide defaults. Anything secret belongs in an Ansible Vault file, not here.
+
+base_hardening_ssh_allow_groups: [wheel]
+base_hardening_firewall_allowed_tcp: [22]
+
+user_lifecycle_groups:
+  - name: wheel
+    system: true
+
+user_lifecycle_users: []

@@ -1,0 +1,20 @@
+---
+# Full baseline: hardening everywhere, then role-specific configuration.
+
+- name: Apply the security baseline to every host
+  hosts: all
+  become: true
+  roles:
+    - role: base_hardening
+
+- name: Manage accounts
+  hosts: all
+  become: true
+  roles:
+    - role: user_lifecycle
+
+- name: Configure web servers
+  hosts: web
+  become: true
+  roles:
+    - role: nginx

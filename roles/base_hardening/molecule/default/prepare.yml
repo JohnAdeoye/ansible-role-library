@@ -1,0 +1,48 @@
+---
+# Base images are deliberately minimal. Install what the role assumes a real
+# machine already has, so the converge exercises the role rather than bootstrapping.
+
+- name: Prepare test hosts
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Install prerequisites (RedHat)
+      ansible.builtin.dnf:
+        name:
+          - sudo
+          - procps-ng
+          - findutils
+          - iproute
+          - cronie
+          - python3-libselinux
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+
+    - name: Install prerequisites (Debian)
+      ansible.builtin.apt:
+        name:
+          - sudo
+          - procps
+          - findutils
+          - iproute2
+          - cron
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure the su group exists
+      ansible.builtin.group:
+        name: wheel
+        state: present
+
+    - name: Create a test user so the account tasks have something to act on
+      ansible.builtin.user:
+        name: molecule-test
+        shell: /bin/bash
+        create_home: true
+        state: present

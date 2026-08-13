@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# CIS 5.3.1 — password quality. Read by pam_pwquality on both distros.
+
+minlen = {{ base_hardening_pwquality_minlen }}
+dcredit = {{ base_hardening_pwquality_dcredit }}
+ucredit = {{ base_hardening_pwquality_ucredit }}
+ocredit = {{ base_hardening_pwquality_ocredit }}
+lcredit = {{ base_hardening_pwquality_lcredit }}
+difok = {{ base_hardening_pwquality_difok }}
+maxrepeat = {{ base_hardening_pwquality_maxrepeat }}
+
+# Reject passwords containing the username or long words from the system dictionary.
+usercheck = 1
+dictcheck = 1
+gecoscheck = 1
+
+# Apply the policy to root as well.
+enforce_for_root

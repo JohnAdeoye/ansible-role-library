@@ -1,0 +1,51 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Locate the patch report written to the controller
+      ansible.builtin.stat:
+        path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/patch-reports/{{ inventory_hostname }}.json"
+      delegate_to: localhost
+      become: false
+      register: report
+
+    - name: Assert a report was written
+      ansible.builtin.assert:
+        that: [report.stat.exists]
+        fail_msg: "no patch report was produced for {{ inventory_hostname }}"
+        quiet: true
+
+    - name: Read the report
+      ansible.builtin.slurp:
+        src: "{{ report.stat.path }}"
+      delegate_to: localhost
+      become: false
+      register: report_raw
+
+    - name: Parse the report
+      ansible.builtin.set_fact:
+        patch_orchestration_report: "{{ report_raw.content | b64decode | from_json }}"
+
+    - name: Assert the report is well-formed
+      ansible.builtin.assert:
+        that:
+          - patch_orchestration_report.host == inventory_hostname
+          - patch_orchestration_report.scope == 'all'
+          - patch_orchestration_report.changed_package_count is defined
+          - patch_orchestration_report.changed_packages is iterable
+          - patch_orchestration_report.reboot_required in [true, false]
+          - patch_orchestration_report.kernel | length > 0
+        fail_msg: "patch report is missing expected fields: {{ patch_orchestration_report }}"
+        quiet: true
+
+    - name: Show what was patched
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ patch_orchestration_report.changed_package_count }} package(s) changed
+          {{ patch_orchestration_report.changed_packages | map(attribute='name') | list | truncate(200) }}
+
+    - name: Assert the package manager is in a consistent state
+      ansible.builtin.command:
+        cmd: "{{ 'apt-get check' if ansible_os_family == 'Debian' else 'rpm --verify --nofiles --nodigest bash' }}"
+      changed_when: false

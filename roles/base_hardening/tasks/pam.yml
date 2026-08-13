@@ -1,0 +1,87 @@
+---
+# CIS 5.3 — password quality and account lockout.
+
+- name: Ensure pwquality is installed
+  ansible.builtin.package:
+    name: "{{ base_hardening_pwquality_package }}"
+    state: present
+
+- name: Configure password quality requirements
+  ansible.builtin.template:
+    src: pwquality.conf.j2
+    dest: "{{ base_hardening_pwquality_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure account lockout (pam_faillock)
+  ansible.builtin.template:
+    src: faillock.conf.j2
+    dest: "{{ base_hardening_faillock_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# RHEL 9 ships pam_faillock in the authselect profile but it is not enabled unless
+# the feature is selected. Doing this through authselect rather than editing
+# /etc/pam.d directly means a later `authselect apply-changes` will not undo it.
+- name: Enable faillock and pwquality via authselect (RHEL 9)
+  ansible.builtin.command:
+    cmd: "authselect enable-feature {{ item }}"
+  loop:
+    - with-faillock
+    - with-pwquality
+  register: base_hardening_authselect
+  changed_when: "'No existing configuration detected' not in base_hardening_authselect.stdout"
+  failed_when:
+    - base_hardening_authselect.rc != 0
+    - "'No existing configuration' not in base_hardening_authselect.stderr"
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+
+- name: Apply authselect changes
+  ansible.builtin.command:
+    cmd: authselect apply-changes
+  when:
+    - ansible_os_family == 'RedHat'
+    - not base_hardening_in_container | bool
+    - base_hardening_enforce | bool
+    - base_hardening_authselect is changed
+  changed_when: true
+
+# CIS 5.3.3 — password reuse. pam_pwhistory lives in common-password on Debian
+# and in the authselect-generated password-auth on RHEL; `remember=` is the knob.
+- name: Enforce password history on Debian family
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: '^password\s+required\s+pam_pwhistory\.so'
+    line: "password required pam_pwhistory.so remember={{ base_hardening_password_remember }} use_authtok"
+    insertafter: '^# here are the per-package modules'
+    state: present
+    validate: "/bin/true"   # pam files have no offline validator; see verify step
+  when:
+    - ansible_os_family == 'Debian'
+    - base_hardening_enforce | bool
+
+- name: Configure pwhistory on RHEL family
+  ansible.builtin.copy:
+    dest: /etc/security/pwhistory.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 5.3.3 — remember previous passwords.
+      remember = {{ base_hardening_password_remember }}
+  when: ansible_os_family == 'RedHat'
+
+# CIS 5.3.4 — hashing algorithm. yescrypt is the RHEL 9 / Ubuntu 22.04 default,
+# but it is worth pinning so a re-imaged host cannot silently regress to sha512.
+- name: Set password hashing algorithm in login.defs
+  ansible.builtin.lineinfile:
+    path: "{{ base_hardening_login_defs }}"
+    regexp: '^#?\s*ENCRYPT_METHOD'
+    line: "ENCRYPT_METHOD YESCRYPT"
+    state: present

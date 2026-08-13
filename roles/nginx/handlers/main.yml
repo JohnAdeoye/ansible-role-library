@@ -1,0 +1,12 @@
+---
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: not nginx_in_container | bool
+
+- name: Restart nginx
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+  when: not nginx_in_container | bool

@@ -1,0 +1,3 @@
+---
+# No handlers: account changes take effect immediately and nothing needs a
+# service reload.

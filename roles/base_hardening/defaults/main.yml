@@ -1,0 +1,255 @@
+---
+# roles/base_hardening/defaults/main.yml
+
+# ---------------------------------------------------------------------------
+# Control-group switches
+# ---------------------------------------------------------------------------
+base_hardening_filesystem_enabled: true   # 1.1 filesystem modules + mount options
+base_hardening_banner_enabled: true       # 1.7 warning banners
+base_hardening_time_enabled: true         # 2.1 time synchronisation
+base_hardening_services_enabled: true     # 2.2 remove unnecessary server services
+base_hardening_sysctl_enabled: true       # 3.x network kernel parameters
+base_hardening_firewall_enabled: true     # 3.4 host-based firewall
+base_hardening_auditd_enabled: true       # 4.1 auditd rules
+base_hardening_logging_enabled: true      # 4.2 journald/rsyslog permissions
+base_hardening_ssh_enabled: true          # 5.2 sshd configuration
+base_hardening_pam_enabled: true          # 5.3 password quality + lockout
+base_hardening_accounts_enabled: true     # 5.4 shadow suite / umask / inactive lock
+base_hardening_permissions_enabled: true  # 6.1 critical file permissions
+
+# Set false on hosts where you need to inspect the diff before enforcing.
+base_hardening_enforce: true
+
+# ---------------------------------------------------------------------------
+# 1.1 Filesystem
+# ---------------------------------------------------------------------------
+# Kernel modules for filesystems that have no business being loadable on a server.
+base_hardening_blocked_filesystems:
+  - cramfs
+  - freevxfs
+  - hfs
+  - hfsplus
+  - jffs2
+  - squashfs
+  - udf
+
+# Mount options enforced on separate partitions *if that partition exists*.
+# The role never repartitions a running host; it only fixes options on what is there.
+base_hardening_mount_options:
+  /tmp: "defaults,rw,nosuid,nodev,noexec,relatime"
+  /dev/shm: "defaults,rw,nosuid,nodev,noexec"
+  /var/tmp: "defaults,rw,nosuid,nodev,noexec,relatime"
+  /home: "defaults,rw,nosuid,nodev,relatime"
+
+# ---------------------------------------------------------------------------
+# 1.7 Banners
+# ---------------------------------------------------------------------------
+base_hardening_banner_text: |
+  +------------------------------------------------------------------------+
+  | This system is for the use of authorised users only. Individuals using  |
+  | this system are subject to monitoring. Anyone using this system         |
+  | expressly consents to such monitoring. Disconnect IMMEDIATELY if you    |
+  | are not an authorised user.                                             |
+  +------------------------------------------------------------------------+
+
+# ---------------------------------------------------------------------------
+# 2.1 Time
+# ---------------------------------------------------------------------------
+base_hardening_ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+  - 3.pool.ntp.org
+
+# ---------------------------------------------------------------------------
+# 2.2 Unnecessary services
+# ---------------------------------------------------------------------------
+# Masked, not merely stopped — a masked unit cannot be socket-activated back to life.
+base_hardening_masked_services:
+  - avahi-daemon
+  - cups
+  - dhcpd
+  - isc-dhcp-server
+  - nfs-server
+  - rpcbind
+  - rsync
+  - slapd
+  - smbd
+  - snmpd
+  - squid
+  - vsftpd
+  - xinetd
+
+# Packages whose mere presence is a CIS finding (insecure clients).
+base_hardening_removed_packages:
+  - telnet
+  - rsh-client
+  - talk
+  - ypbind
+  - tftp
+
+# ---------------------------------------------------------------------------
+# 3.x Kernel network parameters
+# ---------------------------------------------------------------------------
+base_hardening_ipv6_enabled: true   # set false to disable IPv6 entirely (CIS 3.1.1)
+
+base_hardening_sysctl:
+  # Packet forwarding — hosts are not routers.
+  net.ipv4.ip_forward: 0
+  # Source-routed packets are a spoofing vector.
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  # ICMP redirects.
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  # Log packets with impossible addresses.
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  # Reverse-path filtering (anti-spoof).
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  # Ignore broadcast ICMP (smurf) and bogus error responses.
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+  # SYN flood protection.
+  net.ipv4.tcp_syncookies: 1
+  # Memory / process hardening.
+  kernel.randomize_va_space: 2
+  fs.suid_dumpable: 0
+  kernel.dmesg_restrict: 1
+  kernel.kptr_restrict: 2
+  kernel.yama.ptrace_scope: 1
+
+# Applied only when base_hardening_ipv6_enabled is true.
+base_hardening_sysctl_ipv6:
+  net.ipv6.conf.all.accept_ra: 0
+  net.ipv6.conf.default.accept_ra: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  net.ipv6.conf.all.forwarding: 0
+
+# ---------------------------------------------------------------------------
+# 3.4 Firewall
+# ---------------------------------------------------------------------------
+# firewalld on RHEL, ufw on Ubuntu — resolved in vars/<os_family>.yml.
+base_hardening_firewall_default_policy: deny
+base_hardening_firewall_allowed_tcp: [22]
+base_hardening_firewall_allowed_udp: []
+
+# ---------------------------------------------------------------------------
+# 4.1 auditd
+# ---------------------------------------------------------------------------
+base_hardening_auditd_max_log_file: 32          # MB
+base_hardening_auditd_num_logs: 5
+base_hardening_auditd_max_log_file_action: rotate
+base_hardening_auditd_space_left_action: email
+base_hardening_auditd_admin_space_left_action: halt
+# Immutable rules (-e 2) require a reboot to change. Off by default because it
+# makes the host awkward to iterate on; turn it on for production.
+base_hardening_auditd_immutable: false
+
+# ---------------------------------------------------------------------------
+# 5.2 SSH
+# ---------------------------------------------------------------------------
+base_hardening_ssh_port: 22
+base_hardening_ssh_permit_root_login: "no"
+base_hardening_ssh_password_authentication: "no"
+base_hardening_ssh_permit_empty_passwords: "no"
+base_hardening_ssh_x11_forwarding: "no"
+base_hardening_ssh_max_auth_tries: 4
+base_hardening_ssh_max_sessions: 10
+base_hardening_ssh_max_startups: "10:30:60"
+base_hardening_ssh_login_grace_time: 60
+base_hardening_ssh_client_alive_interval: 300
+base_hardening_ssh_client_alive_count_max: 3
+base_hardening_ssh_log_level: INFO
+base_hardening_ssh_use_pam: "yes"
+
+# Empty list => no AllowGroups directive is written (do not lock yourself out).
+base_hardening_ssh_allow_groups: []
+base_hardening_ssh_deny_users: []
+
+base_hardening_ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+  - aes192-ctr
+  - aes128-ctr
+base_hardening_ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - hmac-sha2-512
+  - hmac-sha2-256
+base_hardening_ssh_kex_algorithms:
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+  - diffie-hellman-group-exchange-sha256
+
+# ---------------------------------------------------------------------------
+# 5.3 PAM
+# ---------------------------------------------------------------------------
+base_hardening_pwquality_minlen: 14
+base_hardening_pwquality_dcredit: -1
+base_hardening_pwquality_ucredit: -1
+base_hardening_pwquality_ocredit: -1
+base_hardening_pwquality_lcredit: -1
+base_hardening_pwquality_difok: 3
+base_hardening_pwquality_maxrepeat: 3
+base_hardening_password_remember: 5
+
+base_hardening_lockout_attempts: 5
+base_hardening_lockout_unlock_time: 900   # seconds; 0 = admin must unlock
+# Locking root out too is stricter, but means a forgotten password plus no console
+# access equals a rescue boot. Off by default; turn on where you have iDRAC/IPMI.
+base_hardening_lockout_include_root: false
+base_hardening_lockout_root_unlock_time: 60
+
+# ---------------------------------------------------------------------------
+# 5.4 Accounts
+# ---------------------------------------------------------------------------
+base_hardening_pass_max_days: 365
+base_hardening_pass_min_days: 1
+base_hardening_pass_warn_age: 7
+base_hardening_inactive_lock_days: 30
+base_hardening_umask: "027"
+base_hardening_shell_timeout: 900         # TMOUT, seconds
+
+# System accounts that must not have a login shell.
+base_hardening_nologin_shell: /usr/sbin/nologin
+
+# Shells that already count as "cannot log in". Used to classify accounts in
+# facts.yml, so it must stay in sync with base_hardening_nologin_shell.
+base_hardening_nologin_shell_pattern: 'nologin|/bin/false|/bin/sync|/sbin/shutdown|/sbin/halt'
+
+# First UID handed out to real people. RHEL 9 and Ubuntu 22.04 both use 1000.
+base_hardening_uid_min: 1000
+
+# System accounts left alone by the nologin sweep. `sync` legitimately runs
+# /bin/sync, and halt/shutdown exist on RHEL for operator use.
+base_hardening_system_account_shell_exceptions:
+  - sync
+  - shutdown
+  - halt
+
+# Group permitted to use su (CIS 5.4.6). Members should be your admins only.
+base_hardening_su_group: wheel
+
+# ---------------------------------------------------------------------------
+# 4.2 Logging
+# ---------------------------------------------------------------------------
+base_hardening_journald_max_use: 1G
+base_hardening_journald_max_file_size: 128M
+
+# ---------------------------------------------------------------------------
+# 6.1 File permissions
+# ---------------------------------------------------------------------------
+base_hardening_shadow_group: root

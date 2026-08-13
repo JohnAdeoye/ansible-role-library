@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: nginx
+  namespace: homelab
+  author: homelab
+  description: NGINX with templated vhosts, TLS, security headers and rate limiting
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+    - name: Ubuntu
+      versions: [jammy]
+  galaxy_tags: [web, nginx, proxy, tls]
+
+dependencies: []

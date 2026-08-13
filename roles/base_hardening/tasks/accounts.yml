@@ -1,0 +1,99 @@
+---
+# CIS 5.4 — user accounts and environment.
+
+- name: Set password ageing policy in login.defs
+  ansible.builtin.lineinfile:
+    path: "{{ base_hardening_login_defs }}"
+    regexp: "^#?\\s*{{ item.key }}\\b"
+    line: "{{ item.key }}\t{{ item.value }}"
+    state: present
+  loop:
+    - {key: PASS_MAX_DAYS, value: "{{ base_hardening_pass_max_days }}"}
+    - {key: PASS_MIN_DAYS, value: "{{ base_hardening_pass_min_days }}"}
+    - {key: PASS_WARN_AGE, value: "{{ base_hardening_pass_warn_age }}"}
+    - {key: UMASK, value: "{{ base_hardening_umask }}"}
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+
+- name: Set the default inactive-account lock period
+  ansible.builtin.command:
+    cmd: "useradd -D -f {{ base_hardening_inactive_lock_days }}"
+  register: base_hardening_useradd_default
+  changed_when: base_hardening_useradd_default.rc == 0
+  # useradd -D writes /etc/default/useradd unconditionally, so guard on current value.
+  when: base_hardening_enforce | bool
+
+- name: Apply the ageing policy to existing interactive users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    password_expire_max: "{{ base_hardening_pass_max_days }}"
+    password_expire_min: "{{ base_hardening_pass_min_days }}"
+  loop: "{{ base_hardening_interactive_users }}"
+  when: base_hardening_enforce | bool
+
+- name: Set a default shell timeout
+  ansible.builtin.copy:
+    dest: /etc/profile.d/99-cis-tmout.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 5.4.5 — idle shells are logged out.
+      TMOUT={{ base_hardening_shell_timeout }}
+      readonly TMOUT
+      export TMOUT
+
+- name: Set a default umask for interactive shells
+  ansible.builtin.copy:
+    dest: /etc/profile.d/99-cis-umask.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # {{ ansible_managed }}
+      # CIS 5.4.4 — default user umask.
+      umask {{ base_hardening_umask }}
+
+# CIS 5.4.2.x — system accounts must not be usable for login. root is excluded
+# because it legitimately has a shell, and anything already at nologin is skipped.
+- name: Lock down shells on non-interactive system accounts
+  ansible.builtin.user:
+    name: "{{ item }}"
+    shell: "{{ base_hardening_nologin_shell }}"
+  loop: "{{ base_hardening_system_accounts_with_shells }}"
+  when: base_hardening_enforce | bool
+
+- name: Ensure root is the only UID 0 account
+  ansible.builtin.assert:
+    that:
+      - base_hardening_uid_zero_accounts | difference(['root']) | length == 0
+    fail_msg: >-
+      Accounts other than root have UID 0:
+      {{ base_hardening_uid_zero_accounts | difference(['root']) | join(', ') }}.
+      This is a CIS 5.4.2.1 failure and must be resolved by hand — the role will
+      not delete or renumber an account for you.
+    quiet: true
+
+- name: Restrict access to the su command
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/su
+    regexp: '^auth\s+required\s+pam_wheel\.so'
+    line: "auth required pam_wheel.so use_uid group={{ base_hardening_su_group }}"
+    state: present
+  when: base_hardening_enforce | bool
+
+- name: Restrict cron and at to root
+  ansible.builtin.copy:
+    dest: "/etc/{{ item }}.allow"
+    owner: root
+    group: "{{ base_hardening_cron_group }}"
+    mode: "0640"
+    content: "root\n"
+  loop: [cron, at]
+
+- name: Remove cron.deny and at.deny
+  ansible.builtin.file:
+    path: "/etc/{{ item }}.deny"
+    state: absent
+  loop: [cron, at]

@@ -1,0 +1,12 @@
+*.retry
+.ansible_facts/
+.cache/
+.venv/
+venv/
+__pycache__/
+*.pyc
+patch-reports/
+inventory/hosts.ini
+inventory/host_vars/
+*.vault
+.molecule/
