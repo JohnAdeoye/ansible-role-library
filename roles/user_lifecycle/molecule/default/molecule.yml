@@ -1,10 +1,13 @@
 ---
+# The images carry systemd already. The stock rockylinux:9 and ubuntu:22.04
+# images do not, so a container asking for an init command exits immediately
+# with "stat /usr/sbin/init: no such file or directory".
 driver:
   name: docker
 
 platforms:
   - name: rocky9-users
-    image: rockylinux/rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     command: /usr/sbin/init
     tmpfs:
@@ -16,7 +19,7 @@ platforms:
     privileged: true
 
   - name: ubuntu2204-users
-    image: ubuntu:22.04
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
     command: /lib/systemd/systemd
     tmpfs:

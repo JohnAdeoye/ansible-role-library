@@ -2,13 +2,17 @@
 # Two platforms, because the whole point of the role is that RHEL and Ubuntu
 # diverge and the vars/ split hides it. A single-platform scenario would not
 # catch a wrong path or service name.
+#
+# The images carry systemd already. The stock rockylinux:9 and ubuntu:22.04
+# images do not, so a container asking for an init command exits immediately
+# with "stat /usr/sbin/init: no such file or directory".
 
 driver:
   name: docker
 
 platforms:
   - name: rocky9-hardening
-    image: rockylinux/rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     # systemd in a container needs cgroup access and a real init. Without this,
     # every service task fails and the scenario tests nothing useful.
@@ -22,7 +26,7 @@ platforms:
     privileged: true
 
   - name: ubuntu2204-hardening
-    image: ubuntu:22.04
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
     command: /lib/systemd/systemd
     tmpfs:

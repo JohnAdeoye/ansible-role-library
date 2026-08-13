@@ -1,4 +1,7 @@
 ---
+# The images carry systemd already. The stock rockylinux:9 and ubuntu:22.04
+# images do not, so a container asking for an init command exits immediately
+# with "stat /usr/sbin/init: no such file or directory".
 # Patching is inherently stateful and reboot-shaped, which a container cannot
 # fully model. This scenario proves the parts that are testable without a
 # hypervisor: pre-flight gating, the patch transaction itself, reboot detection
@@ -8,7 +11,7 @@ driver:
 
 platforms:
   - name: rocky9-patch
-    image: rockylinux/rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     command: /usr/sbin/init
     tmpfs:
@@ -20,7 +23,7 @@ platforms:
     privileged: true
 
   - name: ubuntu2204-patch
-    image: ubuntu:22.04
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
     command: /lib/systemd/systemd
     tmpfs:
